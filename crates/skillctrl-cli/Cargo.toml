@@ -1,0 +1,43 @@
+[package]
+name = "skillctrl"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unified skills marketplace for Claude Code, Codex, and Cursor"
+
+[[bin]]
+name = "skillctrl"
+path = "src/main.rs"
+
+[dependencies]
+skillctrl-core = { path = "../skillctrl-core" }
+skillctrl-catalog = { path = "../skillctrl-catalog" }
+skillctrl-git = { path = "../skillctrl-git" }
+skillctrl-state = { path = "../skillctrl-state" }
+skillctrl-adapter-core = { path = "../skillctrl-adapter-core" }
+skillctrl-adapter-claude = { path = "../skillctrl-adapter-claude" }
+skillctrl-adapter-codex = { path = "../skillctrl-adapter-codex" }
+skillctrl-adapter-cursor = { path = "../skillctrl-adapter-cursor" }
+skillctrl-importer-core = { path = "../skillctrl-importer-core" }
+skillctrl-importer-claude = { path = "../skillctrl-importer-claude" }
+
+clap = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+camino = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde_json = { workspace = true }
+walkdir = { workspace = true }
+chrono = "0.4"
+dirs = "5.0"
+
+# Console UI
+console = "0.16"
+indicatif = "0.17"
+
+[dev-dependencies]
+tempfile = "3.14"

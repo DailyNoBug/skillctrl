@@ -1,0 +1,49 @@
+apiVersion: skillctrl.dev/v1
+kind: Bundle
+id: review-pr
+name: Review PR
+version: 1.2.0
+description: Review pull requests with architecture, tests, and security checks
+authors:
+  - name: skillctrl
+    email: team@skillctrl.dev
+tags:
+  - review
+  - git
+  - quality
+  - security
+targets:
+  - claude-code
+  - codex
+  - cursor
+components:
+  - kind: skill
+    id: review-pr
+    path: components/skills/review-pr
+    display_name: "PR Review"
+    description: "Comprehensive pull request review skill"
+
+  - kind: rule
+    id: review-policy
+    path: components/rules/review-policy.md
+    display_name: "Review Policy"
+    description: "Guidelines for reviewing pull requests"
+
+  - kind: resource
+    id: checklist
+    path: components/resources/checklist.md
+    display_name: "Review Checklist"
+    description: "Standard checklist for PR reviews"
+
+compat:
+  claude-code:
+    installMode: native-skill
+  codex:
+    installMode: native-skill
+  cursor:
+    installMode: rule-first
+
+provenance:
+  source:
+    type: authored
+    repository: https://github.com/skillctrl/examples

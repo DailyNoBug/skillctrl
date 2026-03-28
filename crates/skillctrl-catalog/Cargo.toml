@@ -1,0 +1,23 @@
+[package]
+name = "skillctrl-catalog"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Catalog and bundle manifest parsing for skillctrl"
+
+[dependencies]
+skillctrl-core = { path = "../skillctrl-core" }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+camino = { workspace = true }
+schemars = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"
+pretty_assertions = "1.4"

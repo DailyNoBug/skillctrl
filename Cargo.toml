@@ -1,0 +1,87 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/skillctrl-core",
+    "crates/skillctrl-catalog",
+    "crates/skillctrl-git",
+    "crates/skillctrl-state",
+    "crates/skillctrl-adapter-core",
+    "crates/skillctrl-adapter-claude",
+    "crates/skillctrl-adapter-codex",
+    "crates/skillctrl-adapter-cursor",
+    "crates/skillctrl-importer-core",
+    "crates/skillctrl-importer-claude",
+    "crates/skillctrl-exporter-core",
+    "crates/skillctrl-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["skillctrl contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/DailyNoBug/skillctrl"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.42", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Path utilities
+camino = "1.1"
+walkdir = "2.5"
+dirs = "5.0"
+
+# Git operations
+git2 = "0.20"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Schema validation
+schemars = "0.8"
+
+# UUID
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Semver
+semver = { version = "1.0", features = ["serde"] }
+
+# Macros
+paste = "1.0"
+
+# Regular expressions
+regex = "1.11"
+
+# File globbing
+glob = "0.3"
+
+# HTTP client (for future marketplace features)
+reqwest = { version = "0.12", features = ["json"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

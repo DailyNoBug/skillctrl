@@ -1,0 +1,24 @@
+apiVersion: skillctrl.dev/v1
+kind: Catalog
+name: Example Marketplace
+description: Example catalog with sample bundles for testing skillctrl
+bundles:
+  - id: review-pr
+    version: 1.2.0
+    path: bundles/review-pr
+    summary: Pull request review workflow with architecture, tests, and security checks
+
+  - id: api-design
+    version: 0.8.0
+    path: bundles/api-design
+    summary: API design standards and best practices
+
+  - id: git-workflow
+    version: 1.0.0
+    path: bundles/git-workflow
+    summary: Git workflow helpers and conventions
+
+  - id: testing
+    version: 2.1.0
+    path: bundles/testing
+    summary: Testing utilities and test generation helpers

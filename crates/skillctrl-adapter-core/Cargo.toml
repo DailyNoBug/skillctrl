@@ -1,0 +1,23 @@
+[package]
+name = "skillctrl-adapter-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core adapter traits for skillctrl"
+
+[dependencies]
+skillctrl-core = { path = "../skillctrl-core" }
+async-trait = "0.1"
+futures = "0.3"
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+camino = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+semver = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

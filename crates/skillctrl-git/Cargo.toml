@@ -1,0 +1,20 @@
+[package]
+name = "skillctrl-git"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Git operations for skillctrl"
+
+[dependencies]
+skillctrl-core = { path = "../skillctrl-core" }
+git2 = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+camino = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"

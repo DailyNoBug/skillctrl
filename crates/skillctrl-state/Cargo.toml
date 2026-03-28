@@ -1,0 +1,25 @@
+[package]
+name = "skillctrl-state"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "State management for skillctrl"
+
+[dependencies]
+skillctrl-core = { path = "../skillctrl-core" }
+skillctrl-git = { path = "../skillctrl-git" }
+rusqlite = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+camino = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+semver = { workspace = true }
+dirs = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"

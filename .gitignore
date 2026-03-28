@@ -1,0 +1,44 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local AI tooling
+.claude/
+.codex/
+.cursor/
+
+# Build
+/dist
+/build
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Test coverage
+*.profraw
+*.profdata
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Cache
+.cache/
+*.cache
