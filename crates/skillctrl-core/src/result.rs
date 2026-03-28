@@ -1,11 +1,11 @@
 //! Result types for operations.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
 use crate::component::ComponentKind;
 use crate::endpoint::Endpoint;
 use crate::scope::Scope;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Installation plan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,11 +77,7 @@ pub struct InstallResult {
 
 impl InstallResult {
     /// Creates a new successful install result.
-    pub fn success(
-        bundle_id: String,
-        target: Endpoint,
-        scope: Scope,
-    ) -> Self {
+    pub fn success(bundle_id: String, target: Endpoint, scope: Scope) -> Self {
         Self {
             bundle_id,
             target,
@@ -95,11 +91,7 @@ impl InstallResult {
     }
 
     /// Creates a new failed install result.
-    pub fn failure(
-        bundle_id: String,
-        target: Endpoint,
-        scope: Scope,
-    ) -> Self {
+    pub fn failure(bundle_id: String, target: Endpoint, scope: Scope) -> Self {
         Self {
             bundle_id,
             target,

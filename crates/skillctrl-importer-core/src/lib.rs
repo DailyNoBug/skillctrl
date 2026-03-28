@@ -5,11 +5,9 @@
 //! assistants and converting them into skillctrl's canonical model.
 
 use async_trait::async_trait;
+use skillctrl_core::{ComponentKind, Endpoint, Error, ImportPlan, Result, ValidationReport};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use skillctrl_core::{
-    ComponentKind, Endpoint, Error, ImportPlan, Result, ValidationReport,
-};
 
 /// Request for scanning a source.
 #[derive(Debug, Clone)]
@@ -207,8 +205,11 @@ pub trait Importer: Send + Sync + 'static {
     /// Plans an import.
     ///
     /// Analyzes detected artifacts and creates an import plan.
-    async fn plan_import(&self, req: &ImportRequest, artifacts: &DetectedArtifacts)
-        -> Result<ImportPlan>;
+    async fn plan_import(
+        &self,
+        req: &ImportRequest,
+        artifacts: &DetectedArtifacts,
+    ) -> Result<ImportPlan>;
 
     /// Applies an import plan.
     ///
@@ -302,7 +303,9 @@ pub trait DynImporter: Send + Sync {
     fn scan<'life0, 'async_trait>(
         &'life0 self,
         req: &'life0 ScanRequest,
-    ) -> core::pin::Pin<Box<dyn futures::Future<Output = Result<DetectedArtifacts>> + Send + 'async_trait>>
+    ) -> core::pin::Pin<
+        Box<dyn futures::Future<Output = Result<DetectedArtifacts>> + Send + 'async_trait>,
+    >
     where
         'life0: 'async_trait,
         Self: 'async_trait;
@@ -339,7 +342,9 @@ impl<T: Importer> DynImporter for T {
     fn scan<'life0, 'async_trait>(
         &'life0 self,
         req: &'life0 ScanRequest,
-    ) -> core::pin::Pin<Box<dyn futures::Future<Output = Result<DetectedArtifacts>> + Send + 'async_trait>>
+    ) -> core::pin::Pin<
+        Box<dyn futures::Future<Output = Result<DetectedArtifacts>> + Send + 'async_trait>,
+    >
     where
         'life0: 'async_trait,
         Self: 'async_trait,

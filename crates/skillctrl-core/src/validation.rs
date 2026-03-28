@@ -1,7 +1,7 @@
 //! Validation types and utilities.
 
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Severity of a validation message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -38,10 +38,7 @@ impl VersionPolicy {
 
     /// Returns the default version policy for skillctrl.
     pub fn default_policy() -> Self {
-        Self::new(
-            semver::Version::new(1, 0, 0),
-            semver::Version::new(1, 0, 0),
-        )
+        Self::new(semver::Version::new(1, 0, 0), semver::Version::new(1, 0, 0))
     }
 }
 

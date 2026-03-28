@@ -4,20 +4,19 @@
 //! `.cursor` directory structure.
 
 use async_trait::async_trait;
+use skillctrl_adapter_core::{
+    Adapter, AdapterCapabilities, BundleStatus, ComponentStatus, ConflictStrategy, EndpointStatus,
+    HookResult, InstallAdapter, InstallContext, InstallPlan, InstallResult, RollbackResult,
+    StatusAdapter, StatusAdapter as StatusAdapterTrait, StatusReport, StatusRequest,
+    UninstallAdapter, UninstallAdapter as UninstallAdapterTrait, UninstallPlan, UninstallRequest,
+};
+use skillctrl_core::{
+    BundleManifest, ComponentInstall, ComponentKind, Endpoint, Error, InstallFile, KnownEndpoint,
+    Result, Scope, ValidationReport,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use skillctrl_adapter_core::{
-    Adapter, InstallAdapter, UninstallAdapter, StatusAdapter,
-    AdapterCapabilities, ConflictStrategy, HookResult, InstallContext,
-    InstallPlan, InstallResult, RollbackResult, UninstallPlan, UninstallRequest,
-    StatusRequest, StatusReport, BundleStatus, ComponentStatus, EndpointStatus,
-    UninstallAdapter as UninstallAdapterTrait, StatusAdapter as StatusAdapterTrait,
-};
-use skillctrl_core::{
-    BundleManifest, ComponentKind, Endpoint, Error, Result, Scope, ValidationReport,
-    KnownEndpoint, InstallFile, ComponentInstall,
-};
 
 /// Cursor adapter.
 pub struct CursorAdapter {
@@ -57,9 +56,8 @@ impl CursorAdapter {
     /// Ensures the .cursor directory exists.
     fn ensure_cursor_dir(&self, cursor_dir: &Path) -> Result<()> {
         if !cursor_dir.exists() {
-            fs::create_dir_all(cursor_dir).map_err(|e| {
-                Error::Other(format!("failed to create .cursor directory: {}", e))
-            })?;
+            fs::create_dir_all(cursor_dir)
+                .map_err(|e| Error::Other(format!("failed to create .cursor directory: {}", e)))?;
         }
         Ok(())
     }
@@ -67,7 +65,11 @@ impl CursorAdapter {
     /// Reads component content from a file.
     fn read_component_content(&self, path: &Path) -> Result<String> {
         fs::read_to_string(path).map_err(|e| {
-            Error::Other(format!("failed to read component file {}: {}", path.display(), e))
+            Error::Other(format!(
+                "failed to read component file {}: {}",
+                path.display(),
+                e
+            ))
         })
     }
 }
@@ -105,9 +107,10 @@ impl Adapter for CursorAdapter {
 
         if let Some(parent) = cursor_dir.parent() {
             if !parent.exists() {
-                return Ok(HookResult::failure(
-                    format!("parent directory does not exist: {}", parent.display()),
-                ));
+                return Ok(HookResult::failure(format!(
+                    "parent directory does not exist: {}",
+                    parent.display()
+                )));
             }
         }
 
@@ -180,7 +183,10 @@ impl InstallAdapter for CursorAdapter {
                     )?;
                 }
                 _ => {
-                    tracing::warn!("Unsupported component kind for Cursor: {:?}", component.kind);
+                    tracing::warn!(
+                        "Unsupported component kind for Cursor: {:?}",
+                        component.kind
+                    );
                 }
             }
         }
@@ -189,17 +195,26 @@ impl InstallAdapter for CursorAdapter {
     }
 
     async fn apply_install(&self, plan: &InstallPlan) -> Result<InstallResult> {
-        let mut result = InstallResult::success(plan.bundle_id.clone(), plan.target.clone(), plan.scope);
+        let mut result =
+            InstallResult::success(plan.bundle_id.clone(), plan.target.clone(), plan.scope);
 
         for file in &plan.files_to_create {
             if let Some(parent) = file.path.parent() {
                 fs::create_dir_all(parent).map_err(|e| {
-                    Error::Other(format!("failed to create directory {}: {}", parent.display(), e))
+                    Error::Other(format!(
+                        "failed to create directory {}: {}",
+                        parent.display(),
+                        e
+                    ))
                 })?;
             }
 
             fs::write(&file.path, &file.content).map_err(|e| {
-                Error::Other(format!("failed to write file {}: {}", file.path.display(), e))
+                Error::Other(format!(
+                    "failed to write file {}: {}",
+                    file.path.display(),
+                    e
+                ))
             })?;
 
             result.files_created.push(file.path.clone());
@@ -207,7 +222,11 @@ impl InstallAdapter for CursorAdapter {
 
         for file in &plan.files_to_modify {
             fs::write(&file.path, &file.content).map_err(|e| {
-                Error::Other(format!("failed to write file {}: {}", file.path.display(), e))
+                Error::Other(format!(
+                    "failed to write file {}: {}",
+                    file.path.display(),
+                    e
+                ))
             })?;
 
             result.files_modified.push(file.path.clone());
@@ -222,7 +241,11 @@ impl InstallAdapter for CursorAdapter {
         for file in &plan.files_to_create {
             if file.path.exists() {
                 fs::remove_file(&file.path).map_err(|e| {
-                    Error::Other(format!("failed to remove file {}: {}", file.path.display(), e))
+                    Error::Other(format!(
+                        "failed to remove file {}: {}",
+                        file.path.display(),
+                        e
+                    ))
                 })?;
                 cleaned.push(file.path.clone());
             }
@@ -335,7 +358,11 @@ impl CursorAdapter {
     }
 
     /// Converts content to .mdc format with frontmatter.
-    fn to_mdc_format(&self, component: &skillctrl_core::ComponentRef, content: &str) -> Result<String> {
+    fn to_mdc_format(
+        &self,
+        component: &skillctrl_core::ComponentRef,
+        content: &str,
+    ) -> Result<String> {
         let mut mdc = String::new();
 
         // Frontmatter
@@ -357,7 +384,11 @@ impl CursorAdapter {
     }
 
     /// Converts a skill to .mdc format.
-    fn skill_to_mdc_format(&self, component: &skillctrl_core::ComponentRef, content: &str) -> Result<String> {
+    fn skill_to_mdc_format(
+        &self,
+        component: &skillctrl_core::ComponentRef,
+        content: &str,
+    ) -> Result<String> {
         let mut mdc = String::new();
 
         // Frontmatter for skill

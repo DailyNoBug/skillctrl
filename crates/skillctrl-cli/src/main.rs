@@ -1,11 +1,10 @@
 //! skillctrl - Unified skills marketplace for Claude Code, Codex, and Cursor.
 
-use anyhow::Result;
-use camino::Utf8PathBuf;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use console::Style;
 use indicatif::{ProgressBar, ProgressStyle};
-use skillctrl_core::{Endpoint, Scope, KnownEndpoint};
+use skillctrl_catalog::{SourceBundle, SourceCatalog};
+use skillctrl_core::{Endpoint, KnownEndpoint, Scope};
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -40,7 +39,7 @@ enum Commands {
     /// List available bundles
     List {
         /// Source name
-        #[arg(short, long)]
+        #[arg(short = 'S', long)]
         source: Option<String>,
 
         /// Filter by endpoint
@@ -48,7 +47,7 @@ enum Commands {
         target: Option<String>,
 
         /// Search query
-        #[arg(short, long)]
+        #[arg(short = 's', long)]
         search: Option<String>,
     },
 
@@ -249,17 +248,15 @@ async fn main() -> Result<()> {
     // Initialize tracing
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(if cli.verbose {
-                    tracing::Level::DEBUG.into()
-                } else {
-                    tracing::Level::INFO.into()
-                }),
+            tracing_subscriber::EnvFilter::from_default_env().add_directive(if cli.verbose {
+                tracing::Level::DEBUG.into()
+            } else {
+                tracing::Level::INFO.into()
+            }),
         )
         .finish();
 
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("failed to set tracing subscriber");
+    tracing::subscriber::set_global_default(subscriber).expect("failed to set tracing subscriber");
 
     // Run command
     match run_command(cli).await {
@@ -273,15 +270,13 @@ async fn main() -> Result<()> {
 
 async fn run_command(cli: Cli) -> Result<()> {
     match cli.command {
-        Commands::Source { action } => {
-            handle_source_command(action).await
-        }
-        Commands::List { source, target, search } => {
-            handle_list(source, target, search).await
-        }
-        Commands::Show { bundle_id, source } => {
-            handle_show(bundle_id, source).await
-        }
+        Commands::Source { action } => handle_source_command(action).await,
+        Commands::List {
+            source,
+            target,
+            search,
+        } => handle_list(source, target, search).await,
+        Commands::Show { bundle_id, source } => handle_show(bundle_id, source).await,
         Commands::Install {
             bundle_id,
             source,
@@ -289,53 +284,38 @@ async fn run_command(cli: Cli) -> Result<()> {
             scope,
             project,
             dry_run,
-        } => {
-            handle_install(bundle_id, source, target, scope, project, dry_run).await
-        }
+        } => handle_install(bundle_id, source, target, scope, project, dry_run).await,
         Commands::Uninstall {
             bundle_id,
             target,
             scope,
             project,
             dry_run,
-        } => {
-            handle_uninstall(bundle_id, target, scope, project, dry_run).await
-        }
-        Commands::Import { action } => {
-            handle_import_command(action).await
-        }
-        Commands::Status { target, scope, project, bundle } => {
-            handle_status(target, scope, project, bundle).await
-        }
-        Commands::Update { source } => {
-            handle_update(source).await
-        }
+        } => handle_uninstall(bundle_id, target, scope, project, dry_run).await,
+        Commands::Import { action } => handle_import_command(action).await,
+        Commands::Status {
+            target,
+            scope,
+            project,
+            bundle,
+        } => handle_status(target, scope, project, bundle).await,
+        Commands::Update { source } => handle_update(source).await,
         Commands::Export {
             bundle_id,
             source,
             target,
             out,
             format,
-        } => {
-            handle_export(bundle_id, source, target, out, format).await
-        }
+        } => handle_export(bundle_id, source, target, out, format).await,
     }
 }
 
 async fn handle_source_command(action: SourceCommands) -> Result<()> {
     match action {
-        SourceCommands::Add { name, repo, branch } => {
-            source_add(name, repo, branch).await
-        }
-        SourceCommands::List => {
-            source_list().await
-        }
-        SourceCommands::Remove { name } => {
-            source_remove(name).await
-        }
-        SourceCommands::Update { name } => {
-            source_update(name).await
-        }
+        SourceCommands::Add { name, repo, branch } => source_add(name, repo, branch).await,
+        SourceCommands::List => source_list().await,
+        SourceCommands::Remove { name } => source_remove(name).await,
+        SourceCommands::Update { name } => source_update(name).await,
     }
 }
 
@@ -351,19 +331,20 @@ async fn source_add(name: String, repo: String, branch: String) -> Result<()> {
     // Register source in state
     let state = skillctrl_state::StateManager::open_default().await?;
     let cache_path = cache_dir.clone();
-    let source = skillctrl_state::GitSource::new(
-        name.clone(),
-        repo.clone(),
-        branch.clone(),
-        cache_path,
-    );
+    let source =
+        skillctrl_state::GitSource::new(name.clone(), repo.clone(), branch.clone(), cache_path);
     state.register_source(&source).await?;
 
     // Clone the repository
     let spinner = create_spinner("Cloning repository...".to_string());
     let git_manager = skillctrl_git::GitManager::new(cache_dir);
-    let _path = git_manager.clone(&source).await?;
-    spinner.finish_with_message("Repository cloned successfully");
+    let path = git_manager.clone(&source).await?;
+    let catalog = SourceCatalog::load_from_dir(&path)
+        .with_context(|| format!("failed to load source catalog from {}", path.display()))?;
+    spinner.finish_with_message(format!(
+        "Repository cloned successfully ({} bundles)",
+        catalog.bundles().len()
+    ));
 
     println!("✓ Source '{}' added successfully", name);
     Ok(())
@@ -413,17 +394,28 @@ async fn source_update(name: String) -> Result<()> {
         .find(|s| s.name == name)
         .ok_or_else(|| anyhow::anyhow!("source '{}' not found", name))?;
 
+    let cache_dir = source
+        .cache_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("invalid cache path for source '{}'", source.name))?
+        .to_path_buf();
+
     let spinner = create_spinner("Fetching updates...".to_string());
-    let git_manager = skillctrl_git::GitManager::new(source.cache_path.clone());
-    let _path = git_manager
+    let git_manager = skillctrl_git::GitManager::new(cache_dir.clone());
+    let path = git_manager
         .fetch(&skillctrl_git::GitSource::new(
             source.name.clone(),
             source.repo_url.clone(),
             source.branch.clone(),
-            source.cache_path.clone(),
+            cache_dir,
         ))
         .await?;
-    spinner.finish_with_message("Updates fetched");
+    let catalog = SourceCatalog::load_from_dir(&path)
+        .with_context(|| format!("failed to load source catalog from {}", path.display()))?;
+    spinner.finish_with_message(format!(
+        "Updates fetched ({} bundles available)",
+        catalog.bundles().len()
+    ));
 
     println!("✓ Source '{}' updated successfully", name);
     Ok(())
@@ -434,27 +426,94 @@ async fn handle_list(
     target: Option<String>,
     search: Option<String>,
 ) -> Result<()> {
-    println!("Available bundles:");
+    let target = match target {
+        Some(target) => Some(parse_endpoint(&target)?),
+        None => None,
+    };
+    let query = search.map(|value| value.to_lowercase());
+    let sources = load_source_catalogs(source.as_deref()).await?;
 
-    // For now, show example bundles
+    if sources.is_empty() {
+        println!("No sources configured.");
+        println!("\nAdd a source with:");
+        println!("  skillctrl source add <name> --repo <url>");
+        return Ok(());
+    }
+
+    let mut bundles: Vec<(String, SourceBundle)> = Vec::new();
+    for source in sources {
+        for bundle in source.catalog.bundles() {
+            if let Some(target) = &target {
+                if !bundle_supports_target(bundle, target) {
+                    continue;
+                }
+            }
+
+            if let Some(query) = &query {
+                if !bundle_matches_query(bundle, query) {
+                    continue;
+                }
+            }
+
+            bundles.push((source.entry.name.clone(), bundle.clone()));
+        }
+    }
+
+    bundles.sort_by(|left, right| {
+        left.1
+            .entry
+            .id
+            .cmp(&right.1.entry.id)
+            .then(left.0.cmp(&right.0))
+    });
+
+    println!("Available bundles:");
     println!();
-    println!("  review-pr    Pull request review workflow");
-    println!("  api-design   API design standards");
-    println!();
-    println!("Use 'skillctrl show <bundle>' for details");
+
+    if bundles.is_empty() {
+        println!("  (no matching bundles)");
+        return Ok(());
+    }
+
+    for (source_name, bundle) in bundles {
+        println!("  {} [{}]", bundle.entry.id, source_name);
+        println!("    {}", bundle.entry.summary);
+        if !bundle.manifest.targets.is_empty() {
+            println!("    Targets: {}", format_targets(&bundle.manifest.targets));
+        }
+    }
 
     Ok(())
 }
 
 async fn handle_show(bundle_id: String, source: Option<String>) -> Result<()> {
-    println!("Bundle: {}", bundle_id);
-    println!("Description: Example bundle");
-    println!("Targets: claude-code, codex, cursor");
+    let resolved = resolve_bundle(&bundle_id, source.as_deref()).await?;
+
+    println!("Bundle: {}", resolved.bundle.manifest.id);
+    println!("Name: {}", resolved.bundle.manifest.name);
+    println!("Source: {}", resolved.source_name);
+    println!("Version: {}", resolved.bundle.manifest.version);
+    println!(
+        "Targets: {}",
+        if resolved.bundle.manifest.targets.is_empty() {
+            "(none)".to_string()
+        } else {
+            format_targets(&resolved.bundle.manifest.targets)
+        }
+    );
+    if let Some(description) = &resolved.bundle.manifest.description {
+        println!("Description: {}", description);
+    }
+    println!("Base path: {}", resolved.bundle.bundle_root.display());
     println!();
     println!("Components:");
-    println!("  - skill: review-pr");
-    println!("  - rule: review-policy");
-    println!("  - resource: checklist");
+    for component in &resolved.bundle.manifest.components {
+        println!("  - {}: {}", component.kind, component.id);
+        println!("    Path: {}", component.path.display());
+        if let Some(description) = &component.description {
+            println!("    Description: {}", description);
+        }
+    }
 
     Ok(())
 }
@@ -479,9 +538,7 @@ async fn handle_install(
 
     if dry_run {
         println!();
-        println!("[DRY RUN] Would install:");
-        println!("  .claude/skills/review-pr/SKILL.md");
-        println!("  .claude/rules/review-policy.md");
+        println!("[DRY RUN] Will plan installation without writing files.");
         return Ok(());
     }
 
@@ -490,16 +547,9 @@ async fn handle_install(
     // Get adapter
     let adapter = get_adapter(&target)?;
 
-    // Load bundle
-    let state = skillctrl_state::StateManager::open_default().await?;
-    let sources = state.list_sources().await?;
-    let source_entry = sources
-        .iter()
-        .find(|s| s.name == source)
-        .ok_or_else(|| anyhow::anyhow!("source '{}' not found", source))?;
-
-    let bundle_path = source_entry.cache_path.join("bundles").join(&bundle_id);
-    let bundle = skillctrl_catalog::BundleLoader::load_from_dir(&bundle_path)?;
+    let resolved = resolve_bundle(&bundle_id, Some(&source)).await?;
+    let bundle_root = resolved.bundle.bundle_root.clone();
+    let bundle = resolved.bundle.manifest.clone();
 
     spinner.finish_with_message("Installation planned");
 
@@ -512,7 +562,10 @@ async fn handle_install(
         conflict_strategy: skillctrl_adapter_core::ConflictStrategy::BackupThenWrite,
         metadata: {
             let mut m = std::collections::HashMap::new();
-            m.insert("bundle_path".to_string(), bundle_path.to_string_lossy().to_string());
+            m.insert(
+                "bundle_path".to_string(),
+                bundle_root.to_string_lossy().to_string(),
+            );
             m
         },
     };
@@ -523,6 +576,7 @@ async fn handle_install(
     spinner.finish_with_message("Installation complete");
 
     // Record installation
+    let state = skillctrl_state::StateManager::open_default().await?;
     let install_record = skillctrl_state::InstallationRecord {
         bundle_id: bundle.id.clone(),
         bundle_version: bundle.version,
@@ -568,15 +622,9 @@ async fn handle_uninstall(
 
 async fn handle_import_command(action: ImportCommands) -> Result<()> {
     match action {
-        ImportCommands::Scan { from, path } => {
-            import_scan(from, path).await
-        }
-        ImportCommands::Plan { from, path, id } => {
-            import_plan(from, path, id).await
-        }
-        ImportCommands::Apply { from, path, out } => {
-            import_apply(from, path, out).await
-        }
+        ImportCommands::Scan { from, path } => import_scan(from, path).await,
+        ImportCommands::Plan { from, path, id } => import_plan(from, path, id).await,
+        ImportCommands::Apply { from, path, out } => import_apply(from, path, out).await,
     }
 }
 
@@ -603,7 +651,11 @@ async fn import_scan(from: String, path: PathBuf) -> Result<()> {
     println!("Found {} artifacts:", artifacts.artifacts.len());
 
     for artifact in &artifacts.artifacts {
-        println!("  [{:?}] {}", artifact.kind, artifact.id.as_ref().unwrap_or(&"unknown".to_string()));
+        println!(
+            "  [{:?}] {}",
+            artifact.kind,
+            artifact.id.as_ref().unwrap_or(&"unknown".to_string())
+        );
         println!("    Path: {}", artifact.path.display());
         if let Some(description) = &artifact.description {
             println!("    Description: {}", description);
@@ -727,7 +779,10 @@ async fn handle_status(
     println!("Installed bundles:");
     for install in &installations {
         println!("  {} ({})", install.bundle_id, install.bundle_version);
-        println!("    Installed: {}", install.installed_at.format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "    Installed: {}",
+            install.installed_at.format("%Y-%m-%d %H:%M:%S")
+        );
         println!("    Files: {}", install.files_created.len());
         println!();
     }
@@ -769,46 +824,47 @@ async fn handle_export(
     println!("  Target: {}", endpoint);
     println!("  Output: {}", out.display());
 
-    // Load bundle
-    let state = skillctrl_state::StateManager::open_default().await?;
-    let sources = state.list_sources().await?;
-    let source_entry = sources
-        .iter()
-        .find(|s| s.name == source)
-        .ok_or_else(|| anyhow::anyhow!("source '{}' not found", source))?;
+    let resolved = resolve_bundle(&bundle_id, Some(&source)).await?;
+    let bundle_root = resolved.bundle.bundle_root.clone();
+    let bundle = resolved.bundle.manifest.clone();
 
-    let bundle_path = source_entry.cache_path.join("bundles").join(&bundle_id);
-    let bundle = skillctrl_catalog::BundleLoader::load_from_dir(&bundle_path)?;
-
-    // For now, do a simple file copy export
-    // Full exporter implementation would use skillctrl-exporter-core
     fs::create_dir_all(&out)?;
 
-    // Copy bundle components
-    let components_dir = bundle_path.join("components");
-    if components_dir.exists() {
-        let out_components = out.join("components");
-        fs::create_dir_all(&out_components)?;
+    for component in &bundle.components {
+        let src = bundle_root.join(&component.path);
+        if src.is_file() {
+            let dest = out.join(&component.path);
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&src, &dest)?;
+            continue;
+        }
 
-        for entry in walkdir::WalkDir::new(&components_dir) {
-            let entry = entry.map_err(|e| anyhow::anyhow!("walk error: {}", e))?;
-            let src = entry.path();
-            let rel = src.strip_prefix(&bundle_path)
-                .map_err(|e| anyhow::anyhow!("path strip error: {}", e))?;
-            let dest = out.join(rel);
+        if src.is_dir() {
+            for entry in walkdir::WalkDir::new(&src) {
+                let entry = entry.map_err(|e| anyhow::anyhow!("walk error: {}", e))?;
+                let entry_path = entry.path();
+                if !entry_path.is_file() {
+                    continue;
+                }
 
-            if src.is_file() {
+                let rel = entry_path
+                    .strip_prefix(&bundle_root)
+                    .map_err(|e| anyhow::anyhow!("path strip error: {}", e))?;
+                let dest = out.join(rel);
                 if let Some(parent) = dest.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                fs::copy(src, &dest)?;
+                fs::copy(entry_path, &dest)?;
             }
         }
     }
 
-    // Copy bundle manifest
     let bundle_manifest = out.join("bundle.yaml");
-    fs::copy(bundle_path.join("bundle.yaml"), &bundle_manifest)?;
+    let manifest_content = serde_yaml::to_string(&bundle)
+        .map_err(|e| anyhow::anyhow!("failed to serialize bundle manifest: {}", e))?;
+    fs::write(&bundle_manifest, manifest_content)?;
 
     println!("✓ Bundle exported successfully to {}", out.display());
 
@@ -816,6 +872,100 @@ async fn handle_export(
 }
 
 // Helper functions
+
+#[derive(Clone)]
+struct LoadedSource {
+    entry: skillctrl_state::SourceEntry,
+    catalog: SourceCatalog,
+}
+
+#[derive(Clone)]
+struct ResolvedBundle {
+    source_name: String,
+    bundle: SourceBundle,
+}
+
+async fn load_source_catalogs(source_name: Option<&str>) -> Result<Vec<LoadedSource>> {
+    let state = skillctrl_state::StateManager::open_default().await?;
+    let sources = state.list_sources().await?;
+
+    if let Some(source_name) = source_name {
+        if !sources.iter().any(|source| source.name == source_name) {
+            return Err(anyhow::anyhow!("source '{}' not found", source_name));
+        }
+    }
+
+    let mut loaded = Vec::new();
+    for source in sources {
+        if source_name.is_some() && source_name != Some(source.name.as_str()) {
+            continue;
+        }
+
+        let catalog = SourceCatalog::load_from_dir(&source.cache_path).with_context(|| {
+            format!(
+                "failed to load catalog for source '{}' from {}",
+                source.name,
+                source.cache_path.display()
+            )
+        })?;
+
+        loaded.push(LoadedSource {
+            entry: source,
+            catalog,
+        });
+    }
+
+    Ok(loaded)
+}
+
+async fn resolve_bundle(bundle_id: &str, source_name: Option<&str>) -> Result<ResolvedBundle> {
+    let sources = load_source_catalogs(source_name).await?;
+    let mut matches = Vec::new();
+
+    for source in sources {
+        if let Some(bundle) = source.catalog.find_bundle(bundle_id) {
+            matches.push(ResolvedBundle {
+                source_name: source.entry.name.clone(),
+                bundle: bundle.clone(),
+            });
+        }
+    }
+
+    match matches.len() {
+        0 => Err(anyhow::anyhow!("bundle '{}' not found", bundle_id)),
+        1 => Ok(matches.remove(0)),
+        _ => Err(anyhow::anyhow!(
+            "bundle '{}' exists in multiple sources; rerun with --source",
+            bundle_id
+        )),
+    }
+}
+
+fn bundle_matches_query(bundle: &SourceBundle, query: &str) -> bool {
+    let description = bundle.manifest.description.as_deref().unwrap_or_default();
+    bundle.entry.id.to_lowercase().contains(query)
+        || bundle.entry.summary.to_lowercase().contains(query)
+        || bundle.manifest.name.to_lowercase().contains(query)
+        || description.to_lowercase().contains(query)
+}
+
+fn bundle_supports_target(bundle: &SourceBundle, target: &Endpoint) -> bool {
+    let targets = if bundle.manifest.targets.is_empty() {
+        &bundle.entry.targets
+    } else {
+        &bundle.manifest.targets
+    };
+
+    targets.is_empty() || targets.iter().any(|candidate| candidate == target)
+}
+
+fn format_targets(targets: &[Endpoint]) -> String {
+    targets
+        .iter()
+        .map(|target| target.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
 
 fn parse_endpoint(s: &str) -> Result<Endpoint> {
     Endpoint::from_str(s)
@@ -830,27 +980,34 @@ fn parse_scope(s: &str) -> Result<Scope> {
     Ok(scope)
 }
 
-fn get_adapter(endpoint: &Endpoint) -> Result<std::sync::Arc<dyn skillctrl_adapter_core::InstallAdapter + Send + Sync>> {
+fn get_adapter(
+    endpoint: &Endpoint,
+) -> Result<std::sync::Arc<dyn skillctrl_adapter_core::InstallAdapter + Send + Sync>> {
     match endpoint {
-        Endpoint::Known(KnownEndpoint::ClaudeCode) => {
-            Ok(std::sync::Arc::new(skillctrl_adapter_claude::ClaudeAdapter::new()))
-        }
-        Endpoint::Known(KnownEndpoint::Codex) => {
-            Ok(std::sync::Arc::new(skillctrl_adapter_codex::CodexAdapter::new()))
-        }
-        Endpoint::Known(KnownEndpoint::Cursor) => {
-            Ok(std::sync::Arc::new(skillctrl_adapter_cursor::CursorAdapter::new()))
-        }
+        Endpoint::Known(KnownEndpoint::ClaudeCode) => Ok(std::sync::Arc::new(
+            skillctrl_adapter_claude::ClaudeAdapter::new(),
+        )),
+        Endpoint::Known(KnownEndpoint::Codex) => Ok(std::sync::Arc::new(
+            skillctrl_adapter_codex::CodexAdapter::new(),
+        )),
+        Endpoint::Known(KnownEndpoint::Cursor) => Ok(std::sync::Arc::new(
+            skillctrl_adapter_cursor::CursorAdapter::new(),
+        )),
         _ => Err(anyhow::anyhow!("adapter not implemented for: {}", endpoint)),
     }
 }
 
-fn get_importer(endpoint: &Endpoint) -> Result<std::sync::Arc<dyn skillctrl_importer_core::Importer + Send + Sync>> {
+fn get_importer(
+    endpoint: &Endpoint,
+) -> Result<std::sync::Arc<dyn skillctrl_importer_core::Importer + Send + Sync>> {
     match endpoint {
-        Endpoint::Known(KnownEndpoint::ClaudeCode) => {
-            Ok(std::sync::Arc::new(skillctrl_importer_claude::ClaudeImporter::new()))
-        }
-        _ => Err(anyhow::anyhow!("importer not implemented for: {}", endpoint)),
+        Endpoint::Known(KnownEndpoint::ClaudeCode) => Ok(std::sync::Arc::new(
+            skillctrl_importer_claude::ClaudeImporter::new(),
+        )),
+        _ => Err(anyhow::anyhow!(
+            "importer not implemented for: {}",
+            endpoint
+        )),
     }
 }
 

@@ -1,9 +1,9 @@
 //! Endpoint types and abstractions.
 
+use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
-use serde::{Deserialize, Serialize};
-use anyhow::anyhow;
 
 /// Target endpoint for installation.
 ///
@@ -186,10 +186,7 @@ mod tests {
             KnownEndpoint::from_str("claude-code"),
             Some(KnownEndpoint::ClaudeCode)
         );
-        assert_eq!(
-            KnownEndpoint::from_str("codex"),
-            Some(KnownEndpoint::Codex)
-        );
+        assert_eq!(KnownEndpoint::from_str("codex"), Some(KnownEndpoint::Codex));
         assert_eq!(
             KnownEndpoint::from_str("cursor"),
             Some(KnownEndpoint::Cursor)

@@ -1,12 +1,12 @@
 //! Git operations for skillctrl.
 
-use std::path::{Path, PathBuf};
 use git2::{
     build::{CheckoutBuilder, RepoBuilder},
     BranchType, Cred, DiffOptions, FetchOptions, Repository,
 };
-use tokio::task;
 use skillctrl_core::{Error, Result};
+use std::path::{Path, PathBuf};
+use tokio::task;
 
 /// Git source configuration.
 #[derive(Debug, Clone)]
@@ -64,11 +64,7 @@ impl GitManager {
     }
 
     /// Sets SSH authentication credentials.
-    pub fn with_ssh_auth(
-        mut self,
-        key_path: PathBuf,
-        passphrase: Option<String>,
-    ) -> Self {
+    pub fn with_ssh_auth(mut self, key_path: PathBuf, passphrase: Option<String>) -> Self {
         self.ssh_key_path = Some(key_path);
         self.ssh_passphrase = passphrase;
         self
@@ -83,7 +79,13 @@ impl GitManager {
         let ssh_passphrase = self.ssh_passphrase.clone();
 
         task::spawn_blocking(move || {
-            Self::clone_blocking(&repo_url, &cache_path, &branch, ssh_key_path, ssh_passphrase)
+            Self::clone_blocking(
+                &repo_url,
+                &cache_path,
+                &branch,
+                ssh_key_path,
+                ssh_passphrase,
+            )
         })
         .await
         .map_err(|e| Error::Git(format!("task join error: {}", e)))?
@@ -98,9 +100,8 @@ impl GitManager {
     ) -> Result<PathBuf> {
         // Create parent directory if it doesn't exist
         if let Some(parent) = cache_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                Error::Git(format!("failed to create cache directory: {}", e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::Git(format!("failed to create cache directory: {}", e)))?;
         }
 
         // Check if already cloned
@@ -117,19 +118,16 @@ impl GitManager {
 
         // Prepare fetch options with auth
         let mut fetch_options = FetchOptions::new();
-        fetch_options.remote_callbacks(Self::remote_callbacks(
-            ssh_key_path,
-            ssh_passphrase,
-        )?);
+        fetch_options.remote_callbacks(Self::remote_callbacks(ssh_key_path, ssh_passphrase)?);
 
         // Clone the repository
-        let repo = RepoBuilder::new()
+        RepoBuilder::new()
             .branch(branch)
             .fetch_options(fetch_options)
             .clone(repo_url, cache_path)
             .map_err(|e| Error::Git(format!("clone failed: {}", e)))?;
 
-        Ok(repo.path().to_path_buf())
+        Ok(cache_path.to_path_buf())
     }
 
     /// Fetches updates for an existing repository.
@@ -141,7 +139,13 @@ impl GitManager {
         let ssh_passphrase = self.ssh_passphrase.clone();
 
         task::spawn_blocking(move || {
-            Self::fetch_blocking(&repo_url, &cache_path, &branch, ssh_key_path, ssh_passphrase)
+            Self::fetch_blocking(
+                &repo_url,
+                &cache_path,
+                &branch,
+                ssh_key_path,
+                ssh_passphrase,
+            )
         })
         .await
         .map_err(|e| Error::Git(format!("task join error: {}", e)))?
@@ -168,18 +172,13 @@ impl GitManager {
                     .flatten()
                     .filter_map(|name| repo.find_remote(name).ok())
                     .next()
-                    .ok_or_else(|| {
-                        Error::Git("no remote found in repository".to_string())
-                    })
+                    .ok_or_else(|| Error::Git("no remote found in repository".to_string()))
             })
             .map_err(|e| Error::Git(format!("failed to find remote: {}", e)))?;
 
         // Fetch
         let mut fetch_options = FetchOptions::new();
-        fetch_options.remote_callbacks(Self::remote_callbacks(
-            ssh_key_path,
-            ssh_passphrase,
-        )?);
+        fetch_options.remote_callbacks(Self::remote_callbacks(ssh_key_path, ssh_passphrase)?);
 
         remote
             .fetch(&[branch], Some(&mut fetch_options), None)
@@ -196,7 +195,7 @@ impl GitManager {
 
         // Set the local branch to the fetched commit
         let refname = format!("refs/heads/{}", branch);
-        match repo.find_branch(&refname, BranchType::Local) {
+        match repo.find_branch(branch, BranchType::Local) {
             Ok(mut _branch) => {
                 // Branch exists, set it to the fetch commit
                 repo.reference_to_annotated_commit(&fetch_head)
@@ -240,17 +239,16 @@ impl GitManager {
         let cache_path = source.cache_path();
 
         task::spawn_blocking(move || {
-            let repo = Repository::open(&cache_path).map_err(|e| {
-                Error::Git(format!("failed to open repository: {}", e))
-            })?;
+            let repo = Repository::open(&cache_path)
+                .map_err(|e| Error::Git(format!("failed to open repository: {}", e)))?;
 
-            let head = repo.head().map_err(|e| {
-                Error::Git(format!("failed to get HEAD: {}", e))
-            })?;
+            let head = repo
+                .head()
+                .map_err(|e| Error::Git(format!("failed to get HEAD: {}", e)))?;
 
-            let commit = head.peel_to_commit().map_err(|e| {
-                Error::Git(format!("failed to peel to commit: {}", e))
-            })?;
+            let commit = head
+                .peel_to_commit()
+                .map_err(|e| Error::Git(format!("failed to peel to commit: {}", e)))?;
 
             Ok(commit.id().to_string())
         })
@@ -275,17 +273,17 @@ impl GitManager {
                 .revparse_single(&since)
                 .map_err(|e| Error::Git(format!("failed to find commit: {}", e)))?;
 
-            let head = repo.head().map_err(|e| {
-                Error::Git(format!("failed to get HEAD: {}", e))
-            })?;
+            let head = repo
+                .head()
+                .map_err(|e| Error::Git(format!("failed to get HEAD: {}", e)))?;
 
-            let old_tree = old_commit.peel_to_tree().map_err(|e| {
-                Error::Git(format!("failed to peel to tree: {}", e))
-            })?;
+            let old_tree = old_commit
+                .peel_to_tree()
+                .map_err(|e| Error::Git(format!("failed to peel to tree: {}", e)))?;
 
-            let new_tree = head.peel_to_tree().map_err(|e| {
-                Error::Git(format!("failed to peel to tree: {}", e))
-            })?;
+            let new_tree = head
+                .peel_to_tree()
+                .map_err(|e| Error::Git(format!("failed to peel to tree: {}", e)))?;
 
             let mut diff_opts = DiffOptions::default();
             let diff = repo
@@ -362,10 +360,7 @@ mod tests {
 
         assert_eq!(source.name, "test");
         assert_eq!(source.branch, "main");
-        assert_eq!(
-            source.cache_path(),
-            temp_dir.path().join("test")
-        );
+        assert_eq!(source.cache_path(), temp_dir.path().join("test"));
     }
 
     #[test]

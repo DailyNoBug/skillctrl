@@ -1,9 +1,9 @@
 //! Dependency management.
 
-use std::collections::{HashMap, HashSet};
 use crate::component::ComponentKind;
-use crate::Result;
 use crate::Error;
+use crate::Result;
+use std::collections::{HashMap, HashSet};
 
 /// A dependency on another component.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -86,10 +86,7 @@ impl DependencyResolver {
     /// Resolves the installation order for components.
     ///
     /// Returns components in dependency order (dependencies before dependents).
-    pub fn resolve_order(
-        &self,
-        components: &[ResolvedDependency],
-    ) -> Result<Vec<String>> {
+    pub fn resolve_order(&self, components: &[ResolvedDependency]) -> Result<Vec<String>> {
         let mut graph: HashMap<String, Vec<String>> = HashMap::new();
         let mut all_ids: HashSet<String> = HashSet::new();
 
@@ -110,13 +107,7 @@ impl DependencyResolver {
         let mut visiting = HashSet::new();
 
         for id in &all_ids {
-            self.visit(
-                id,
-                &graph,
-                &mut sorted,
-                &mut visited,
-                &mut visiting,
-            )?;
+            self.visit(id, &graph, &mut sorted, &mut visited, &mut visiting)?;
         }
 
         Ok(sorted)
@@ -235,16 +226,18 @@ mod tests {
             ResolvedDependency {
                 id: "a".to_string(),
                 kind: ComponentKind::Skill,
-                dependencies: vec![
-                    ComponentDependency::required("b".to_string(), ComponentKind::Skill),
-                ],
+                dependencies: vec![ComponentDependency::required(
+                    "b".to_string(),
+                    ComponentKind::Skill,
+                )],
             },
             ResolvedDependency {
                 id: "b".to_string(),
                 kind: ComponentKind::Skill,
-                dependencies: vec![
-                    ComponentDependency::required("c".to_string(), ComponentKind::Skill),
-                ],
+                dependencies: vec![ComponentDependency::required(
+                    "c".to_string(),
+                    ComponentKind::Skill,
+                )],
             },
             ResolvedDependency {
                 id: "c".to_string(),
@@ -265,16 +258,18 @@ mod tests {
             ResolvedDependency {
                 id: "a".to_string(),
                 kind: ComponentKind::Skill,
-                dependencies: vec![
-                    ComponentDependency::required("b".to_string(), ComponentKind::Skill),
-                ],
+                dependencies: vec![ComponentDependency::required(
+                    "b".to_string(),
+                    ComponentKind::Skill,
+                )],
             },
             ResolvedDependency {
                 id: "b".to_string(),
                 kind: ComponentKind::Skill,
-                dependencies: vec![
-                    ComponentDependency::required("a".to_string(), ComponentKind::Skill),
-                ],
+                dependencies: vec![ComponentDependency::required(
+                    "a".to_string(),
+                    ComponentKind::Skill,
+                )],
             },
         ];
 

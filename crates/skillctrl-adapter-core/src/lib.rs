@@ -5,12 +5,10 @@
 //! the specific formats and directory structures used by different AI coding assistants.
 
 use async_trait::async_trait;
+pub use skillctrl_core::{AdapterCapabilities, InstallFile, InstallPlan, InstallResult};
+use skillctrl_core::{ComponentKind, Endpoint, Error, Result, Scope, ValidationReport};
 use std::path::PathBuf;
 use std::str::FromStr;
-use skillctrl_core::{
-    ComponentKind, Endpoint, Error, Scope, ValidationReport, Result,
-};
-pub use skillctrl_core::{AdapterCapabilities, InstallPlan, InstallResult, InstallFile};
 
 /// Context for installation operations.
 #[derive(Debug, Clone)]
@@ -249,7 +247,10 @@ pub trait Adapter: Send + Sync + 'static {
     }
 
     /// Post-uninstallation hook.
-    async fn post_uninstall(&self, _result: &skillctrl_core::UninstallResult) -> Result<HookResult> {
+    async fn post_uninstall(
+        &self,
+        _result: &skillctrl_core::UninstallResult,
+    ) -> Result<HookResult> {
         Ok(HookResult::success())
     }
 }
@@ -297,7 +298,10 @@ pub trait UninstallAdapter: Adapter {
     async fn plan_uninstall(&self, req: &UninstallRequest) -> Result<UninstallPlan>;
 
     /// Applies an uninstallation plan.
-    async fn apply_uninstall(&self, plan: &UninstallPlan) -> Result<skillctrl_core::UninstallResult>;
+    async fn apply_uninstall(
+        &self,
+        plan: &UninstallPlan,
+    ) -> Result<skillctrl_core::UninstallResult>;
 }
 
 /// Uninstallation plan.

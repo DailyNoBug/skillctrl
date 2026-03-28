@@ -52,17 +52,11 @@ pub enum Error {
 
     /// Adapter error.
     #[error("Adapter error: {endpoint} - {message}")]
-    Adapter {
-        endpoint: String,
-        message: String,
-    },
+    Adapter { endpoint: String, message: String },
 
     /// Importer error.
     #[error("Importer error: {endpoint} - {message}")]
-    Importer {
-        endpoint: String,
-        message: String,
-    },
+    Importer { endpoint: String, message: String },
 
     /// Dependency resolution error.
     #[error("Dependency error: {0}")]
@@ -70,10 +64,7 @@ pub enum Error {
 
     /// Manifest parse error.
     #[error("Manifest parse error at {path}: {message}")]
-    ManifestParse {
-        path: PathBuf,
-        message: String,
-    },
+    ManifestParse { path: PathBuf, message: String },
 
     /// Config error.
     #[error("Config error: {0}")]

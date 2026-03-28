@@ -4,20 +4,19 @@
 //! `.claude` directory structure.
 
 use async_trait::async_trait;
+use skillctrl_adapter_core::{
+    Adapter, AdapterCapabilities, BundleStatus, ComponentStatus, ConflictStrategy, EndpointStatus,
+    HookResult, InstallAdapter, InstallContext, InstallPlan, InstallResult, RollbackResult,
+    StatusAdapter, StatusAdapter as StatusAdapterTrait, StatusReport, StatusRequest,
+    UninstallAdapter, UninstallAdapter as UninstallAdapterTrait, UninstallPlan, UninstallRequest,
+};
+use skillctrl_core::{
+    BundleManifest, ComponentInstall, ComponentKind, Endpoint, Error, InstallFile, KnownEndpoint,
+    Result, Scope, ValidationReport,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use skillctrl_adapter_core::{
-    Adapter, InstallAdapter, UninstallAdapter, StatusAdapter,
-    AdapterCapabilities, ConflictStrategy, HookResult, InstallContext,
-    InstallPlan, InstallResult, RollbackResult, UninstallPlan, UninstallRequest,
-    StatusRequest, StatusReport, BundleStatus, ComponentStatus, EndpointStatus,
-    UninstallAdapter as UninstallAdapterTrait, StatusAdapter as StatusAdapterTrait,
-};
-use skillctrl_core::{
-    BundleManifest, ComponentKind, Endpoint, Error, Result, Scope, ValidationReport,
-    KnownEndpoint, InstallFile, ComponentInstall,
-};
 
 /// Claude Code adapter.
 pub struct ClaudeAdapter {
@@ -57,9 +56,8 @@ impl ClaudeAdapter {
     /// Ensures the .claude directory exists.
     fn ensure_claude_dir(&self, claude_dir: &Path) -> Result<()> {
         if !claude_dir.exists() {
-            fs::create_dir_all(claude_dir).map_err(|e| {
-                Error::Other(format!("failed to create .claude directory: {}", e))
-            })?;
+            fs::create_dir_all(claude_dir)
+                .map_err(|e| Error::Other(format!("failed to create .claude directory: {}", e)))?;
         }
         Ok(())
     }
@@ -67,7 +65,11 @@ impl ClaudeAdapter {
     /// Reads component content from a file.
     fn read_component_content(&self, path: &Path) -> Result<String> {
         fs::read_to_string(path).map_err(|e| {
-            Error::Other(format!("failed to read component file {}: {}", path.display(), e))
+            Error::Other(format!(
+                "failed to read component file {}: {}",
+                path.display(),
+                e
+            ))
         })
     }
 }
@@ -111,9 +113,10 @@ impl Adapter for ClaudeAdapter {
         if !claude_dir.exists() {
             if let Some(parent) = claude_dir.parent() {
                 if !parent.exists() {
-                    return Ok(HookResult::failure(
-                        format!("parent directory does not exist: {}", parent.display()),
-                    ));
+                    return Ok(HookResult::failure(format!(
+                        "parent directory does not exist: {}",
+                        parent.display()
+                    )));
                 }
             }
         }
@@ -235,17 +238,26 @@ impl InstallAdapter for ClaudeAdapter {
     }
 
     async fn apply_install(&self, plan: &InstallPlan) -> Result<InstallResult> {
-        let mut result = InstallResult::success(plan.bundle_id.clone(), plan.target.clone(), plan.scope);
+        let mut result =
+            InstallResult::success(plan.bundle_id.clone(), plan.target.clone(), plan.scope);
 
         for file in &plan.files_to_create {
             if let Some(parent) = file.path.parent() {
                 fs::create_dir_all(parent).map_err(|e| {
-                    Error::Other(format!("failed to create directory {}: {}", parent.display(), e))
+                    Error::Other(format!(
+                        "failed to create directory {}: {}",
+                        parent.display(),
+                        e
+                    ))
                 })?;
             }
 
             fs::write(&file.path, &file.content).map_err(|e| {
-                Error::Other(format!("failed to write file {}: {}", file.path.display(), e))
+                Error::Other(format!(
+                    "failed to write file {}: {}",
+                    file.path.display(),
+                    e
+                ))
             })?;
 
             result.files_created.push(file.path.clone());
@@ -254,7 +266,11 @@ impl InstallAdapter for ClaudeAdapter {
         for file in &plan.files_to_modify {
             // For now, just write
             fs::write(&file.path, &file.content).map_err(|e| {
-                Error::Other(format!("failed to write file {}: {}", file.path.display(), e))
+                Error::Other(format!(
+                    "failed to write file {}: {}",
+                    file.path.display(),
+                    e
+                ))
             })?;
 
             result.files_modified.push(file.path.clone());
@@ -271,7 +287,11 @@ impl InstallAdapter for ClaudeAdapter {
         for file in &plan.files_to_create {
             if file.path.exists() {
                 fs::remove_file(&file.path).map_err(|e| {
-                    Error::Other(format!("failed to remove file {}: {}", file.path.display(), e))
+                    Error::Other(format!(
+                        "failed to remove file {}: {}",
+                        file.path.display(),
+                        e
+                    ))
                 })?;
                 cleaned.push(file.path.clone());
             }
@@ -288,7 +308,12 @@ impl InstallAdapter for ClaudeAdapter {
         dirs_to_check.dedup();
 
         for dir in dirs_to_check {
-            if dir.exists() && dir.read_dir().map(|mut i| i.next().is_none()).unwrap_or(false) {
+            if dir.exists()
+                && dir
+                    .read_dir()
+                    .map(|mut i| i.next().is_none())
+                    .unwrap_or(false)
+            {
                 fs::remove_dir(&dir).ok();
             }
         }
@@ -425,12 +450,10 @@ impl ClaudeAdapter {
 
         // Read the existing config or create a new one
         let mut mcp_config: serde_json::Value = if mcp_config_path.exists() {
-            let content = fs::read_to_string(&mcp_config_path).map_err(|e| {
-                Error::Other(format!("failed to read MCP config: {}", e))
-            })?;
-            serde_json::from_str(&content).map_err(|e| {
-                Error::Serialization(format!("failed to parse MCP config: {}", e))
-            })?
+            let content = fs::read_to_string(&mcp_config_path)
+                .map_err(|e| Error::Other(format!("failed to read MCP config: {}", e)))?;
+            serde_json::from_str(&content)
+                .map_err(|e| Error::Serialization(format!("failed to parse MCP config: {}", e)))?
         } else {
             serde_json::json!({
                 "mcpServers": {}
@@ -486,12 +509,10 @@ impl ClaudeAdapter {
 
         // Read existing settings or create new
         let mut settings: serde_json::Value = if settings_path.exists() {
-            let content = fs::read_to_string(&settings_path).map_err(|e| {
-                Error::Other(format!("failed to read settings: {}", e))
-            })?;
-            serde_json::from_str(&content).map_err(|e| {
-                Error::Serialization(format!("failed to parse settings: {}", e))
-            })?
+            let content = fs::read_to_string(&settings_path)
+                .map_err(|e| Error::Other(format!("failed to read settings: {}", e)))?;
+            serde_json::from_str(&content)
+                .map_err(|e| Error::Serialization(format!("failed to parse settings: {}", e)))?
         } else {
             serde_json::json!({})
         };
@@ -664,7 +685,10 @@ mod tests {
     #[test]
     fn test_adapter_creation() {
         let adapter = ClaudeAdapter::new();
-        assert_eq!(adapter.endpoint(), Endpoint::Known(KnownEndpoint::ClaudeCode));
+        assert_eq!(
+            adapter.endpoint(),
+            Endpoint::Known(KnownEndpoint::ClaudeCode)
+        );
     }
 
     #[test]

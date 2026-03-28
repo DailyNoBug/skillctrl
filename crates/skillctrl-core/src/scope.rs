@@ -1,8 +1,8 @@
 //! Installation scope types.
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
-use serde::{Deserialize, Serialize};
 
 /// Installation scope.
 ///
@@ -91,11 +91,12 @@ impl ResolvedScope {
                 )
             })?;
 
-        let config_dir = camino::Utf8PathBuf::from_path_buf(config_dir)
-            .map_err(|p| std::io::Error::new(
+        let config_dir = camino::Utf8PathBuf::from_path_buf(config_dir).map_err(|p| {
+            std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("config path is not UTF-8: {:?}", p),
-            ))?;
+            )
+        })?;
 
         Ok(Self::new(Scope::User, config_dir))
     }

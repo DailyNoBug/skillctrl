@@ -1263,6 +1263,7 @@ dependencies = [
  "dirs",
  "indicatif",
  "serde_json",
+ "serde_yaml",
  "skillctrl-adapter-claude",
  "skillctrl-adapter-codex",
  "skillctrl-adapter-core",
@@ -1369,8 +1370,8 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "camino",
- "pretty_assertions",
  "schemars",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml",

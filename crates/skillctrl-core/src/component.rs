@@ -1,11 +1,11 @@
 //! Component types and abstractions.
 
-use std::any::Any;
-use std::fmt;
-use serde::{Deserialize, Serialize};
 use crate::dependency::ComponentDependency;
 use crate::validation::ValidationReport;
 use crate::Result;
+use serde::{Deserialize, Serialize};
+use std::any::Any;
+use std::fmt;
 
 /// The kind of a component.
 ///
@@ -175,7 +175,10 @@ mod tests {
     fn test_component_kind_from_str() {
         assert_eq!(ComponentKind::from_str("skill"), Some(ComponentKind::Skill));
         assert_eq!(ComponentKind::from_str("rule"), Some(ComponentKind::Rule));
-        assert_eq!(ComponentKind::from_str("custom"), Some(ComponentKind::Custom("custom".to_string())));
+        assert_eq!(
+            ComponentKind::from_str("custom"),
+            Some(ComponentKind::Custom("custom".to_string()))
+        );
     }
 
     #[test]

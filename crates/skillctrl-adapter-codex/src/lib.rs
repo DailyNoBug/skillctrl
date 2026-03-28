@@ -4,20 +4,19 @@
 //! `.codex` directory structure and configuration.
 
 use async_trait::async_trait;
+use skillctrl_adapter_core::{
+    Adapter, AdapterCapabilities, BundleStatus, ComponentStatus, ConflictStrategy, EndpointStatus,
+    HookResult, InstallAdapter, InstallContext, InstallPlan, InstallResult, RollbackResult,
+    StatusAdapter, StatusAdapter as StatusAdapterTrait, StatusReport, StatusRequest,
+    UninstallAdapter, UninstallAdapter as UninstallAdapterTrait, UninstallPlan, UninstallRequest,
+};
+use skillctrl_core::{
+    BundleManifest, ComponentInstall, ComponentKind, Endpoint, Error, InstallFile, KnownEndpoint,
+    Result, Scope, ValidationReport,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use skillctrl_adapter_core::{
-    Adapter, InstallAdapter, UninstallAdapter, StatusAdapter,
-    AdapterCapabilities, ConflictStrategy, HookResult, InstallContext,
-    InstallPlan, InstallResult, RollbackResult, UninstallPlan, UninstallRequest,
-    StatusRequest, StatusReport, BundleStatus, ComponentStatus, EndpointStatus,
-    UninstallAdapter as UninstallAdapterTrait, StatusAdapter as StatusAdapterTrait,
-};
-use skillctrl_core::{
-    BundleManifest, ComponentKind, Endpoint, Error, Result, Scope, ValidationReport,
-    KnownEndpoint, InstallFile, ComponentInstall,
-};
 
 /// Codex adapter.
 pub struct CodexAdapter {
@@ -57,9 +56,8 @@ impl CodexAdapter {
     /// Ensures the .codex directory exists.
     fn ensure_codex_dir(&self, codex_dir: &Path) -> Result<()> {
         if !codex_dir.exists() {
-            fs::create_dir_all(codex_dir).map_err(|e| {
-                Error::Other(format!("failed to create .codex directory: {}", e))
-            })?;
+            fs::create_dir_all(codex_dir)
+                .map_err(|e| Error::Other(format!("failed to create .codex directory: {}", e)))?;
         }
         Ok(())
     }
@@ -73,7 +71,11 @@ impl CodexAdapter {
     /// Reads component content from a file.
     fn read_component_content(&self, path: &Path) -> Result<String> {
         fs::read_to_string(path).map_err(|e| {
-            Error::Other(format!("failed to read component file {}: {}", path.display(), e))
+            Error::Other(format!(
+                "failed to read component file {}: {}",
+                path.display(),
+                e
+            ))
         })
     }
 
@@ -82,13 +84,11 @@ impl CodexAdapter {
         let config_path = self.config_path(scope, project_path)?;
 
         if config_path.exists() {
-            let content = fs::read_to_string(&config_path).map_err(|e| {
-                Error::Other(format!("failed to read config.toml: {}", e))
-            })?;
+            let content = fs::read_to_string(&config_path)
+                .map_err(|e| Error::Other(format!("failed to read config.toml: {}", e)))?;
 
-            let config: CodexConfig = toml::from_str(&content).map_err(|e| {
-                Error::Serialization(format!("failed to parse config.toml: {}", e))
-            })?;
+            let config: CodexConfig = toml::from_str(&content)
+                .map_err(|e| Error::Serialization(format!("failed to parse config.toml: {}", e)))?;
 
             Ok(config)
         } else {
@@ -97,16 +97,19 @@ impl CodexAdapter {
     }
 
     /// Writes the config.toml.
-    fn write_config(&self, config: &CodexConfig, scope: Scope, project_path: Option<&Path>) -> Result<()> {
+    fn write_config(
+        &self,
+        config: &CodexConfig,
+        scope: Scope,
+        project_path: Option<&Path>,
+    ) -> Result<()> {
         let config_path = self.config_path(scope, project_path)?;
 
-        let toml_str = toml::to_string_pretty(config).map_err(|e| {
-            Error::Serialization(format!("failed to serialize config: {}", e))
-        })?;
+        let toml_str = toml::to_string_pretty(config)
+            .map_err(|e| Error::Serialization(format!("failed to serialize config: {}", e)))?;
 
-        fs::write(&config_path, toml_str).map_err(|e| {
-            Error::Other(format!("failed to write config.toml: {}", e))
-        })?;
+        fs::write(&config_path, toml_str)
+            .map_err(|e| Error::Other(format!("failed to write config.toml: {}", e)))?;
 
         Ok(())
     }
@@ -146,9 +149,10 @@ impl Adapter for CodexAdapter {
 
         if let Some(parent) = codex_dir.parent() {
             if !parent.exists() {
-                return Ok(HookResult::failure(
-                    format!("parent directory does not exist: {}", parent.display()),
-                ));
+                return Ok(HookResult::failure(format!(
+                    "parent directory does not exist: {}",
+                    parent.display()
+                )));
             }
         }
 
@@ -241,17 +245,26 @@ impl InstallAdapter for CodexAdapter {
     }
 
     async fn apply_install(&self, plan: &InstallPlan) -> Result<InstallResult> {
-        let mut result = InstallResult::success(plan.bundle_id.clone(), plan.target.clone(), plan.scope);
+        let mut result =
+            InstallResult::success(plan.bundle_id.clone(), plan.target.clone(), plan.scope);
 
         for file in &plan.files_to_create {
             if let Some(parent) = file.path.parent() {
                 fs::create_dir_all(parent).map_err(|e| {
-                    Error::Other(format!("failed to create directory {}: {}", parent.display(), e))
+                    Error::Other(format!(
+                        "failed to create directory {}: {}",
+                        parent.display(),
+                        e
+                    ))
                 })?;
             }
 
             fs::write(&file.path, &file.content).map_err(|e| {
-                Error::Other(format!("failed to write file {}: {}", file.path.display(), e))
+                Error::Other(format!(
+                    "failed to write file {}: {}",
+                    file.path.display(),
+                    e
+                ))
             })?;
 
             result.files_created.push(file.path.clone());
@@ -259,7 +272,11 @@ impl InstallAdapter for CodexAdapter {
 
         for file in &plan.files_to_modify {
             fs::write(&file.path, &file.content).map_err(|e| {
-                Error::Other(format!("failed to write file {}: {}", file.path.display(), e))
+                Error::Other(format!(
+                    "failed to write file {}: {}",
+                    file.path.display(),
+                    e
+                ))
             })?;
 
             result.files_modified.push(file.path.clone());
@@ -274,7 +291,11 @@ impl InstallAdapter for CodexAdapter {
         for file in &plan.files_to_create {
             if file.path.exists() {
                 fs::remove_file(&file.path).map_err(|e| {
-                    Error::Other(format!("failed to remove file {}: {}", file.path.display(), e))
+                    Error::Other(format!(
+                        "failed to remove file {}: {}",
+                        file.path.display(),
+                        e
+                    ))
                 })?;
                 cleaned.push(file.path.clone());
             }
@@ -389,12 +410,16 @@ impl CodexAdapter {
         let mut config = self.read_config(scope, project_path)?;
 
         // Add MCP server
-        config.mcp_servers.insert(component.id.clone(), toml::Value::try_from(mcp_config)
-            .map_err(|e| Error::Serialization(format!("failed to convert MCP config: {}", e)))?);
+        config.mcp_servers.insert(
+            component.id.clone(),
+            toml::Value::try_from(mcp_config).map_err(|e| {
+                Error::Serialization(format!("failed to convert MCP config: {}", e))
+            })?,
+        );
 
         // Serialize back to TOML
-        let toml_str = toml::to_string_pretty(&config)
-            .map_err(|e| Error::Serialization(e.to_string()))?;
+        let toml_str =
+            toml::to_string_pretty(&config).map_err(|e| Error::Serialization(e.to_string()))?;
 
         let config_path = self.config_path(scope, project_path)?;
 

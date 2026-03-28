@@ -19,31 +19,30 @@
 //! and common error types.
 
 pub mod component;
-pub mod endpoint;
-pub mod scope;
-pub mod version;
-pub mod error;
-pub mod result;
 pub mod dependency;
-pub mod validation;
+pub mod endpoint;
+pub mod error;
 pub mod manifest;
+pub mod result;
+pub mod scope;
+pub mod validation;
+pub mod version;
 
 // Re-exports for convenience
 pub use component::{Component, ComponentKind};
-pub use endpoint::{Endpoint, KnownEndpoint, AdapterCapabilities};
-pub use scope::Scope;
-pub use version::VersionPolicy;
+pub use endpoint::{AdapterCapabilities, Endpoint, KnownEndpoint};
 pub use error::{Error, Result};
 pub use result::{
-    InstallResult, UninstallResult, StatusResult, ValidationResult,
-    InstallPlan, InstallFile, ComponentInstall, ImportPlan, ExportPlan,
-    ValidationMessage, ComponentStatus,
-    ImportArtifact, ExportFormat,
+    ComponentInstall, ComponentStatus, ExportFormat, ExportPlan, ImportArtifact, ImportPlan,
+    InstallFile, InstallPlan, InstallResult, StatusResult, UninstallResult, ValidationMessage,
+    ValidationResult,
 };
+pub use scope::Scope;
+pub use version::VersionPolicy;
 
 pub use dependency::{ComponentDependency, DependencyResolver};
-pub use validation::{ValidationReport, ValidationSeverity};
 pub use manifest::{
-    BundleManifest, CatalogManifest, CatalogEntry,
-    Author, Tag, ComponentRef, CompatConfig, Provenance
+    Author, BundleManifest, CatalogEntry, CatalogManifest, CompatConfig, ComponentRef, Provenance,
+    Tag,
 };
+pub use validation::{ValidationReport, ValidationSeverity};

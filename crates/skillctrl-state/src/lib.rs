@@ -1,8 +1,8 @@
 //! State management for skillctrl.
 
-use std::path::{Path, PathBuf};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use skillctrl_core::{Endpoint, Error, Result, Scope};
+use std::path::{Path, PathBuf};
 
 // Re-export GitSource from the git module
 pub use skillctrl_git::GitSource;
@@ -49,9 +49,8 @@ impl StateManager {
             .ok_or_else(|| Error::Config("could not determine config directory".to_string()))?;
 
         let state_dir = config_dir.join("skillctrl");
-        std::fs::create_dir_all(&state_dir).map_err(|e| {
-            Error::Database(format!("failed to create state directory: {}", e))
-        })?;
+        std::fs::create_dir_all(&state_dir)
+            .map_err(|e| Error::Database(format!("failed to create state directory: {}", e)))?;
 
         let db_path = state_dir.join("state.db");
         Self::open(&db_path).await
@@ -106,11 +105,18 @@ impl StateManager {
 
     /// Registers a source.
     pub async fn register_source(&self, source: &GitSource) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
         let name = source.name.clone();
         let repo_url = source.repo_url.clone();
         let branch = source.branch.clone();
-        let cache_path = source.cache_dir.join(&source.name).to_string_lossy().to_string();
+        let cache_path = source
+            .cache_dir
+            .join(&source.name)
+            .to_string_lossy()
+            .to_string();
 
         conn.execute(
             "INSERT OR REPLACE INTO sources (name, repo_url, branch, cache_path)
@@ -124,10 +130,15 @@ impl StateManager {
 
     /// Lists all registered sources.
     pub async fn list_sources(&self) -> Result<Vec<SourceEntry>> {
-        let conn = self.conn.lock().map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
 
         let mut stmt = conn
-            .prepare("SELECT name, repo_url, branch, cache_path, last_commit, updated_at FROM sources")
+            .prepare(
+                "SELECT name, repo_url, branch, cache_path, last_commit, updated_at FROM sources",
+            )
             .map_err(|e| Error::Database(format!("failed to list sources: {}", e)))?;
 
         let entries = stmt
@@ -150,7 +161,10 @@ impl StateManager {
 
     /// Records an installation.
     pub async fn record_installation(&self, install: &InstallationRecord) -> Result<i64> {
-        let conn = self.conn.lock().map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
         let install = install.clone();
         let files_json = serde_json::to_string(&install.files_created)
             .map_err(|e| Error::Serialization(e.to_string()))?;
@@ -166,7 +180,9 @@ impl StateManager {
                 install.source_name,
                 install.endpoint.to_string(),
                 scope_to_string(install.scope),
-                install.project_path.map(|p| p.to_string_lossy().to_string()),
+                install
+                    .project_path
+                    .map(|p| p.to_string_lossy().to_string()),
                 install.installed_at.to_rfc3339(),
                 files_json,
                 install.backup_path.map(|p| p.to_string_lossy().to_string()),
@@ -195,7 +211,10 @@ impl StateManager {
         scope: Scope,
         project_path: Option<&Path>,
     ) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
         let bundle_id = bundle_id.to_string();
         let endpoint = endpoint.to_string();
         let project_path = project_path.map(|p| p.to_string_lossy().to_string());
@@ -203,12 +222,7 @@ impl StateManager {
         conn.execute(
             "DELETE FROM installations
              WHERE bundle_id = ?1 AND endpoint = ?2 AND scope = ?3 AND project_path = ?4",
-            params![
-                bundle_id,
-                endpoint,
-                scope_to_string(scope),
-                project_path,
-            ],
+            params![bundle_id, endpoint, scope_to_string(scope), project_path,],
         )
         .map_err(|e| Error::Database(format!("failed to remove installation: {}", e)))?;
 
@@ -228,34 +242,29 @@ impl StateManager {
         let scope = scope;
 
         tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
+            let conn = conn
+                .lock()
+                .map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
 
-            let (filter_clause, params): (String, Vec<Option<String>>) = match (&bundle_id, &endpoint, scope) {
-                (Some(b), Some(e), Some(s)) => (
-                    "WHERE bundle_id = ? AND endpoint = ? AND scope = ?".to_string(),
-                    vec![Some(b.clone()), Some(e.clone()), Some(scope_to_string(s))],
-                ),
-                (Some(b), Some(e), None) => (
-                    "WHERE bundle_id = ? AND endpoint = ?".to_string(),
-                    vec![Some(b.clone()), Some(e.clone())],
-                ),
-                (Some(b), None, None) => (
-                    "WHERE bundle_id = ?".to_string(),
-                    vec![Some(b.clone())],
-                ),
-                (None, Some(e), None) => (
-                    "WHERE endpoint = ?".to_string(),
-                    vec![Some(e.clone())],
-                ),
-                (None, None, None) => (
-                    "".to_string(),
-                    vec![],
-                ),
-                _ => (
-                    "".to_string(),
-                    vec![],
-                ),
-            };
+            let (filter_clause, params): (String, Vec<Option<String>>) =
+                match (&bundle_id, &endpoint, scope) {
+                    (Some(b), Some(e), Some(s)) => (
+                        "WHERE bundle_id = ? AND endpoint = ? AND scope = ?".to_string(),
+                        vec![Some(b.clone()), Some(e.clone()), Some(scope_to_string(s))],
+                    ),
+                    (Some(b), Some(e), None) => (
+                        "WHERE bundle_id = ? AND endpoint = ?".to_string(),
+                        vec![Some(b.clone()), Some(e.clone())],
+                    ),
+                    (Some(b), None, None) => {
+                        ("WHERE bundle_id = ?".to_string(), vec![Some(b.clone())])
+                    }
+                    (None, Some(e), None) => {
+                        ("WHERE endpoint = ?".to_string(), vec![Some(e.clone())])
+                    }
+                    (None, None, None) => ("".to_string(), vec![]),
+                    _ => ("".to_string(), vec![]),
+                };
 
             let sql = format!(
                 "SELECT bundle_id, bundle_version, source_name, endpoint, scope,
@@ -278,35 +287,47 @@ impl StateManager {
                 .collect();
 
             let records = stmt
-                .query_map(
-                    params_ref.as_slice(),
-                    |row| {
-                        let files_json: String = row.get(7)?;
-                        let files_created: Vec<PathBuf> = serde_json::from_str(&files_json)
-                            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e) as Box<dyn std::error::Error + Send + Sync>))?;
+                .query_map(params_ref.as_slice(), |row| {
+                    let files_json: String = row.get(7)?;
+                    let files_created: Vec<PathBuf> =
+                        serde_json::from_str(&files_json).map_err(|e| {
+                            rusqlite::Error::ToSqlConversionFailure(
+                                Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+                            )
+                        })?;
 
-                        Ok(InstallationRecord {
-                            bundle_id: row.get(0)?,
-                            bundle_version: semver::Version::parse(&row.get::<_, String>(1)?)
-                                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e) as Box<dyn std::error::Error + Send + Sync>))?,
-                            source_name: row.get(2)?,
-                            endpoint: row.get::<_, String>(3)?.parse()
-                                .map_err(|_| rusqlite::Error::ToSqlConversionFailure(
-                                    Box::new(std::io::Error::new(
-                                        std::io::ErrorKind::InvalidData,
-                                        "invalid endpoint",
-                                    )) as Box<dyn std::error::Error + Send + Sync>
-                                ))?,
-                            scope: scope_from_string(&row.get::<_, String>(4)?),
-                            project_path: row.get::<_, Option<String>>(5)?.map(|s| PathBuf::from(s)),
-                            installed_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
-                                .map(|dt| dt.with_timezone(&chrono::Utc))
-                                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e) as Box<dyn std::error::Error + Send + Sync>))?,
-                            files_created,
-                            backup_path: row.get::<_, Option<String>>(8)?.map(|s| PathBuf::from(s)),
-                        })
-                    },
-                )
+                    Ok(InstallationRecord {
+                        bundle_id: row.get(0)?,
+                        bundle_version: semver::Version::parse(&row.get::<_, String>(1)?).map_err(
+                            |e| {
+                                rusqlite::Error::ToSqlConversionFailure(
+                                    Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+                                )
+                            },
+                        )?,
+                        source_name: row.get(2)?,
+                        endpoint: row.get::<_, String>(3)?.parse().map_err(|_| {
+                            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                "invalid endpoint",
+                            ))
+                                as Box<dyn std::error::Error + Send + Sync>)
+                        })?,
+                        scope: scope_from_string(&row.get::<_, String>(4)?),
+                        project_path: row.get::<_, Option<String>>(5)?.map(|s| PathBuf::from(s)),
+                        installed_at: chrono::DateTime::parse_from_rfc3339(
+                            &row.get::<_, String>(6)?,
+                        )
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .map_err(|e| {
+                            rusqlite::Error::ToSqlConversionFailure(
+                                Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+                            )
+                        })?,
+                        files_created,
+                        backup_path: row.get::<_, Option<String>>(8)?.map(|s| PathBuf::from(s)),
+                    })
+                })
                 .map_err(|e| Error::Database(format!("failed to map installations: {}", e)))?
                 .collect::<std::result::Result<Vec<_>, _>>()
                 .map_err(|e| Error::Database(format!("failed to collect installations: {}", e)))?;

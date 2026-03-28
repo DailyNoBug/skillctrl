@@ -17,7 +17,7 @@ thiserror = { workspace = true }
 camino = { workspace = true }
 schemars = { workspace = true }
 tracing = { workspace = true }
+semver = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.14"
-pretty_assertions = "1.4"

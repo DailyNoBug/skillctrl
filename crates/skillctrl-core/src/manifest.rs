@@ -1,9 +1,9 @@
 //! Manifest types for catalogs and bundles.
 
-use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 use crate::component::ComponentKind;
 use crate::endpoint::Endpoint;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Author information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,10 +159,7 @@ impl BundleManifest {
 
     /// Returns components of a specific kind.
     pub fn components_by_kind(&self, kind: ComponentKind) -> Vec<&ComponentRef> {
-        self.components
-            .iter()
-            .filter(|c| c.kind == kind)
-            .collect()
+        self.components.iter().filter(|c| c.kind == kind).collect()
     }
 
     /// Returns the compatibility config for an endpoint.

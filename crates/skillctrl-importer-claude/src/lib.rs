@@ -4,17 +4,16 @@
 //! into skillctrl's canonical bundle format.
 
 use async_trait::async_trait;
+use skillctrl_core::{
+    ComponentKind, Endpoint, Error, ImportPlan, KnownEndpoint, Result, ValidationReport,
+};
+use skillctrl_importer_core::{
+    ApplyImportRequest, Artifact, ArtifactImport, DetectedArtifacts, ImportRequest, ImportResult,
+    Importer, Metadata, ScanError, ScanErrorSeverity, ScanRequest,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use skillctrl_importer_core::{
-    Importer, ScanRequest, DetectedArtifacts, Artifact, ScanError, ScanErrorSeverity,
-    ImportRequest, ApplyImportRequest, ImportResult, ArtifactImport,
-    Metadata,
-};
-use skillctrl_core::{
-    ComponentKind, Endpoint, Result, Error, KnownEndpoint, ValidationReport, ImportPlan,
-};
 
 /// Claude Code importer.
 pub struct ClaudeImporter {
@@ -201,12 +200,7 @@ impl ClaudeImporter {
                         .max_depth(1)
                         .into_iter()
                         .filter_map(|e| e.ok())
-                        .filter(|e| {
-                            e.path()
-                                .extension()
-                                .and_then(|s| s.to_str())
-                                == Some("md")
-                        })
+                        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("md"))
                         .map(|e| e.path().to_path_buf())
                         .collect()
                 };
@@ -244,26 +238,24 @@ impl ClaudeImporter {
         }
 
         match fs::read_to_string(&settings_path) {
-            Ok(content) => {
-                match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(settings) => {
-                        if settings.get("hooks").is_some() {
-                            artifacts.push(Artifact {
-                                kind: ComponentKind::Hook,
-                                path: settings_path.clone(),
-                                id: Some("hooks".to_string()),
-                                name: Some("Hooks".to_string()),
-                                description: Some("Claude Code hooks".to_string()),
-                                supported: true,
-                                metadata: Metadata::new(),
-                            });
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse settings.json: {}", e);
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(settings) => {
+                    if settings.get("hooks").is_some() {
+                        artifacts.push(Artifact {
+                            kind: ComponentKind::Hook,
+                            path: settings_path.clone(),
+                            id: Some("hooks".to_string()),
+                            name: Some("Hooks".to_string()),
+                            description: Some("Claude Code hooks".to_string()),
+                            supported: true,
+                            metadata: Metadata::new(),
+                        });
                     }
                 }
-            }
+                Err(e) => {
+                    tracing::warn!("Failed to parse settings.json: {}", e);
+                }
+            },
             Err(e) => {
                 tracing::warn!("Failed to read settings.json: {}", e);
             }
@@ -296,32 +288,30 @@ impl ClaudeImporter {
     /// Scans an MCP config file for servers.
     fn scan_mcp_config(&self, config_path: &Path, artifacts: &mut Vec<Artifact>) {
         match fs::read_to_string(config_path) {
-            Ok(content) => {
-                match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(config) => {
-                        if let Some(servers) = config.get("mcpServers").and_then(|v| v.as_object()) {
-                            for (id, _config) in servers {
-                                artifacts.push(Artifact {
-                                    kind: ComponentKind::McpServer,
-                                    path: config_path.to_path_buf(),
-                                    id: Some(id.clone()),
-                                    name: Some(id.clone()),
-                                    description: None,
-                                    supported: true,
-                                    metadata: {
-                                        let mut meta = Metadata::new();
-                                        meta.insert("mcp_server_id".to_string(), id.clone());
-                                        meta
-                                    },
-                                });
-                            }
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(config) => {
+                    if let Some(servers) = config.get("mcpServers").and_then(|v| v.as_object()) {
+                        for (id, _config) in servers {
+                            artifacts.push(Artifact {
+                                kind: ComponentKind::McpServer,
+                                path: config_path.to_path_buf(),
+                                id: Some(id.clone()),
+                                name: Some(id.clone()),
+                                description: None,
+                                supported: true,
+                                metadata: {
+                                    let mut meta = Metadata::new();
+                                    meta.insert("mcp_server_id".to_string(), id.clone());
+                                    meta
+                                },
+                            });
                         }
                     }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse MCP config: {}", e);
-                    }
                 }
-            }
+                Err(e) => {
+                    tracing::warn!("Failed to parse MCP config: {}", e);
+                }
+            },
             Err(e) => {
                 tracing::warn!("Failed to read MCP config: {}", e);
             }
@@ -429,15 +419,13 @@ impl Importer for ClaudeImporter {
         };
 
         // Create output directory
-        fs::create_dir_all(&req.out).map_err(|e| {
-            Error::Other(format!("failed to create output directory: {}", e))
-        })?;
+        fs::create_dir_all(&req.out)
+            .map_err(|e| Error::Other(format!("failed to create output directory: {}", e)))?;
 
         // Create components directory
         let components_dir = req.out.join("components");
-        fs::create_dir_all(&components_dir).map_err(|e| {
-            Error::Other(format!("failed to create components directory: {}", e))
-        })?;
+        fs::create_dir_all(&components_dir)
+            .map_err(|e| Error::Other(format!("failed to create components directory: {}", e)))?;
 
         // Create subdirectories for each component kind
         let skills_dir = components_dir.join("skills");
@@ -448,9 +436,21 @@ impl Importer for ClaudeImporter {
         let mcp_dir = components_dir.join("mcp");
         let resources_dir = components_dir.join("resources");
 
-        for dir in [&skills_dir, &rules_dir, &commands_dir, &agents_dir, &hooks_dir, &mcp_dir, &resources_dir] {
+        for dir in [
+            &skills_dir,
+            &rules_dir,
+            &commands_dir,
+            &agents_dir,
+            &hooks_dir,
+            &mcp_dir,
+            &resources_dir,
+        ] {
             fs::create_dir_all(dir).map_err(|e| {
-                Error::Other(format!("failed to create directory {}: {}", dir.display(), e))
+                Error::Other(format!(
+                    "failed to create directory {}: {}",
+                    dir.display(),
+                    e
+                ))
             })?;
         }
 
@@ -486,10 +486,9 @@ impl Importer for ClaudeImporter {
                     self.import_mcp_server(&artifact, &mcp_dir, &mut result)?;
                 }
                 _ => {
-                    result.warnings.push(format!(
-                        "Unsupported component kind: {:?}",
-                        artifact.kind
-                    ));
+                    result
+                        .warnings
+                        .push(format!("Unsupported component kind: {:?}", artifact.kind));
                 }
             }
         }
@@ -511,14 +510,12 @@ impl ClaudeImporter {
     ) -> Result<()> {
         let skill_id = artifact.id.clone().unwrap_or_else(|| "unknown".to_string());
         let skill_dir = skills_dir.join(&skill_id);
-        fs::create_dir_all(&skill_dir).map_err(|e| {
-            Error::Other(format!("failed to create skill directory: {}", e))
-        })?;
+        fs::create_dir_all(&skill_dir)
+            .map_err(|e| Error::Other(format!("failed to create skill directory: {}", e)))?;
 
         let dest_file = skill_dir.join("SKILL.md");
-        fs::copy(&artifact.path, &dest_file).map_err(|e| {
-            Error::Other(format!("failed to copy skill file: {}", e))
-        })?;
+        fs::copy(&artifact.path, &dest_file)
+            .map_err(|e| Error::Other(format!("failed to copy skill file: {}", e)))?;
 
         result.files_created.push(dest_file.clone());
         result.artifacts_imported.push(ArtifactImport {
@@ -541,9 +538,8 @@ impl ClaudeImporter {
     ) -> Result<()> {
         let command_id = artifact.id.clone().unwrap_or_else(|| "unknown".to_string());
         let dest_file = commands_dir.join(format!("{}.md", command_id));
-        fs::copy(&artifact.path, &dest_file).map_err(|e| {
-            Error::Other(format!("failed to copy command file: {}", e))
-        })?;
+        fs::copy(&artifact.path, &dest_file)
+            .map_err(|e| Error::Other(format!("failed to copy command file: {}", e)))?;
 
         result.files_created.push(dest_file.clone());
         result.artifacts_imported.push(ArtifactImport {
@@ -566,9 +562,8 @@ impl ClaudeImporter {
     ) -> Result<()> {
         let rule_id = artifact.id.clone().unwrap_or_else(|| "unknown".to_string());
         let dest_file = rules_dir.join(format!("{}.md", rule_id));
-        fs::copy(&artifact.path, &dest_file).map_err(|e| {
-            Error::Other(format!("failed to copy rule file: {}", e))
-        })?;
+        fs::copy(&artifact.path, &dest_file)
+            .map_err(|e| Error::Other(format!("failed to copy rule file: {}", e)))?;
 
         result.files_created.push(dest_file.clone());
         result.artifacts_imported.push(ArtifactImport {
@@ -591,14 +586,12 @@ impl ClaudeImporter {
     ) -> Result<()> {
         let agent_id = artifact.id.clone().unwrap_or_else(|| "unknown".to_string());
         let agent_dir = agents_dir.join(&agent_id);
-        fs::create_dir_all(&agent_dir).map_err(|e| {
-            Error::Other(format!("failed to create agent directory: {}", e))
-        })?;
+        fs::create_dir_all(&agent_dir)
+            .map_err(|e| Error::Other(format!("failed to create agent directory: {}", e)))?;
 
         let dest_file = agent_dir.join("agent.md");
-        fs::copy(&artifact.path, &dest_file).map_err(|e| {
-            Error::Other(format!("failed to copy agent file: {}", e))
-        })?;
+        fs::copy(&artifact.path, &dest_file)
+            .map_err(|e| Error::Other(format!("failed to copy agent file: {}", e)))?;
 
         result.files_created.push(dest_file.clone());
         result.artifacts_imported.push(ArtifactImport {
@@ -621,9 +614,8 @@ impl ClaudeImporter {
     ) -> Result<()> {
         let hook_id = artifact.id.clone().unwrap_or_else(|| "hooks".to_string());
         let dest_file = hooks_dir.join(format!("{}.json", hook_id));
-        fs::copy(&artifact.path, &dest_file).map_err(|e| {
-            Error::Other(format!("failed to copy hook file: {}", e))
-        })?;
+        fs::copy(&artifact.path, &dest_file)
+            .map_err(|e| Error::Other(format!("failed to copy hook file: {}", e)))?;
 
         result.files_created.push(dest_file.clone());
         result.artifacts_imported.push(ArtifactImport {
@@ -649,33 +641,40 @@ impl ClaudeImporter {
 
         // Extract the MCP server config from the source file
         match fs::read_to_string(&artifact.path) {
-            Ok(content) => {
-                match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(config) => {
-                        if let Some(servers) = config.get("mcpServers").and_then(|v| v.as_object()) {
-                            if let Some(server_config) = servers.get(&mcp_id) {
-                                fs::write(&dest_file, serde_json::to_string_pretty(server_config).unwrap())
-                                    .map_err(|e| Error::Other(format!("failed to write MCP config: {}", e)))?;
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(config) => {
+                    if let Some(servers) = config.get("mcpServers").and_then(|v| v.as_object()) {
+                        if let Some(server_config) = servers.get(&mcp_id) {
+                            fs::write(
+                                &dest_file,
+                                serde_json::to_string_pretty(server_config).unwrap(),
+                            )
+                            .map_err(|e| {
+                                Error::Other(format!("failed to write MCP config: {}", e))
+                            })?;
 
-                                result.files_created.push(dest_file.clone());
-                                result.artifacts_imported.push(ArtifactImport {
-                                    kind: ComponentKind::McpServer,
-                                    source_path: artifact.path.clone(),
-                                    destination_path: dest_file,
-                                    component_id: mcp_id.clone(),
-                                    had_loss: false,
-                                    loss_description: None,
-                                });
-                            }
+                            result.files_created.push(dest_file.clone());
+                            result.artifacts_imported.push(ArtifactImport {
+                                kind: ComponentKind::McpServer,
+                                source_path: artifact.path.clone(),
+                                destination_path: dest_file,
+                                component_id: mcp_id.clone(),
+                                had_loss: false,
+                                loss_description: None,
+                            });
                         }
                     }
-                    Err(e) => {
-                        result.warnings.push(format!("Failed to parse MCP config: {}", e));
-                    }
                 }
-            }
+                Err(e) => {
+                    result
+                        .warnings
+                        .push(format!("Failed to parse MCP config: {}", e));
+                }
+            },
             Err(e) => {
-                result.warnings.push(format!("Failed to read MCP config: {}", e));
+                result
+                    .warnings
+                    .push(format!("Failed to read MCP config: {}", e));
             }
         }
 
@@ -705,16 +704,16 @@ impl ClaudeImporter {
                         .unwrap_or("unknown")
                         .to_string()
                 }),
-                path: PathBuf::from("components").join(artifact.kind.to_string()).join(
-                    artifact.id.clone().unwrap_or_else(|| {
+                path: PathBuf::from("components")
+                    .join(artifact.kind.to_string())
+                    .join(artifact.id.clone().unwrap_or_else(|| {
                         artifact
                             .path
                             .file_stem()
                             .and_then(|s| s.to_str())
                             .unwrap_or("unknown")
                             .to_string()
-                    }),
-                ),
+                    })),
                 display_name: artifact.id.clone(),
                 description: None,
             });
@@ -745,8 +744,8 @@ impl ClaudeImporter {
             }),
         };
 
-        let manifest_yaml = serde_yaml::to_string(&manifest)
-            .map_err(|e| Error::Serialization(e.to_string()))?;
+        let manifest_yaml =
+            serde_yaml::to_string(&manifest).map_err(|e| Error::Serialization(e.to_string()))?;
 
         let manifest_path = out.join("bundle.yaml");
         fs::write(&manifest_path, manifest_yaml)
