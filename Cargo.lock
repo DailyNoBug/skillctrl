@@ -1253,7 +1253,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "camino",
@@ -1283,7 +1283,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-adapter-claude"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-adapter-codex"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1327,7 +1327,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-adapter-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1344,7 +1344,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-adapter-cursor"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1365,7 +1365,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-catalog"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "camino",
@@ -1382,7 +1382,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "camino",
@@ -1402,7 +1402,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-exporter-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1418,7 +1418,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-git"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "camino",
@@ -1432,7 +1432,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-importer-claude"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1454,7 +1454,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-importer-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1469,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "skillctrl-state"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "camino",

@@ -272,7 +272,7 @@ cargo test --workspace --locked
 
 ### Releases
 
-Push a tag like `v0.1.0` to trigger GitHub Actions to build and publish macOS, Linux, and Windows release archives to GitHub Releases.
+Push a tag like `v0.0.1` to trigger GitHub Actions to build and publish macOS, Linux, and Windows release archives to GitHub Releases.
 
 ### Project Structure
 
