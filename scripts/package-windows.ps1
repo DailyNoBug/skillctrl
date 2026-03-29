@@ -48,28 +48,52 @@ if (-not $Target) {
 }
 
 $Version = Get-WorkspaceVersion
-$BinName = "skillctrl"
+$BinNames = @("skillctrl", "skillctrl-desktop")
 $BinExt = if ($Target -like "*windows*") { ".exe" } else { "" }
+$DesktopDir = Join-Path $RootDir "skillctrl-desktop"
 
-$BuildArgs = @("build", "--locked", "--package", $BinName, "--target", $Target)
+if (-not (Test-Path $DesktopDir)) {
+    throw "Desktop app directory not found: $DesktopDir"
+}
+
+Write-Host "Preparing skillctrl-desktop frontend..."
+Push-Location $DesktopDir
+try {
+    if (-not (Test-Path (Join-Path $DesktopDir "node_modules"))) {
+        & npm ci --no-fund --no-audit
+    }
+    & npm run build
+}
+finally {
+    Pop-Location
+}
+
+$BuildArgs = @("build", "--locked", "--target", $Target)
+foreach ($BinName in $BinNames) {
+    $BuildArgs += @("--package", $BinName)
+}
 if ($Profile -eq "release") {
     $BuildArgs += "--release"
 } else {
     $BuildArgs += @("--profile", $Profile)
 }
 
-Write-Host "Building $BinName $Version for $Target ($Profile)..."
+Write-Host "Building $($BinNames -join ', ') $Version for $Target ($Profile)..."
 & cargo @BuildArgs
 
-$BinaryPath = Join-Path $RootDir "target/$Target/$Profile/$BinName$BinExt"
-if (-not (Test-Path $BinaryPath)) {
-    throw "Expected binary not found: $BinaryPath"
+$BinaryPaths = @()
+foreach ($BinName in $BinNames) {
+    $BinaryPath = Join-Path $RootDir "target/$Target/$Profile/$BinName$BinExt"
+    if (-not (Test-Path $BinaryPath)) {
+        throw "Expected binary not found: $BinaryPath"
+    }
+    $BinaryPaths += $BinaryPath
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $ResolvedOutputDir = (Resolve-Path $OutputDir).Path
 
-$PackageBase = "$BinName-v$Version-$Target"
+$PackageBase = "skillctrl-v$Version-$Target"
 $ArchivePath = Join-Path $ResolvedOutputDir "$PackageBase.zip"
 $ChecksumPath = "$ArchivePath.sha256"
 
@@ -78,10 +102,17 @@ $PackageDir = Join-Path $WorkDir $PackageBase
 New-Item -ItemType Directory -Force -Path $PackageDir | Out-Null
 
 try {
-    Copy-Item $BinaryPath (Join-Path $PackageDir "$BinName$BinExt")
+    foreach ($BinName in $BinNames) {
+        $BinaryPath = Join-Path $RootDir "target/$Target/$Profile/$BinName$BinExt"
+        Copy-Item $BinaryPath (Join-Path $PackageDir "$BinName$BinExt")
+    }
 
     if (Test-Path (Join-Path $RootDir "README.md")) {
         Copy-Item (Join-Path $RootDir "README.md") $PackageDir
+    }
+
+    if (Test-Path (Join-Path $RootDir "USER_GUIDE.md")) {
+        Copy-Item (Join-Path $RootDir "USER_GUIDE.md") $PackageDir
     }
 
     if (Test-Path (Join-Path $RootDir "LICENSE-Apache-2.0.txt")) {
@@ -89,11 +120,11 @@ try {
     }
 
     @"
-name=$BinName
+name=skillctrl
 version=$Version
 target=$Target
 profile=$Profile
-binary=$BinName$BinExt
+binaries=$($BinNames -join ',')
 "@ | Set-Content -Path (Join-Path $PackageDir "BUILD_INFO.txt")
 
     if (Test-Path $ArchivePath) {
@@ -108,7 +139,9 @@ binary=$BinName$BinExt
     Write-Host "Package created:"
     Write-Host "  Archive: $ArchivePath"
     Write-Host "  Checksum: $ChecksumPath"
-    Write-Host "  Binary: $BinaryPath"
+    foreach ($BinaryPath in $BinaryPaths) {
+        Write-Host "  Binary: $BinaryPath"
+    }
 }
 finally {
     if (Test-Path $WorkDir) {

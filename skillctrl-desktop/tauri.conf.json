@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "skillctrl-desktop",
+  "version": "0.0.1",
+  "identifier": "com.skillctrl.desktop",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "dist"
+  },
+  "app": {
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "title": "skillctrl 桌面端",
+        "width": 1520,
+        "height": 980,
+        "minWidth": 1220,
+        "minHeight": 760,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "createUpdaterArtifacts": false,
+    "icon": []
+  }
+}

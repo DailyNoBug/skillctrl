@@ -8,7 +8,7 @@ usage() {
     cat <<'EOF'
 Usage: ./package.sh [--target <triple>] [--profile <profile>] [--output-dir <dir>] [--offline]
 
-Builds the skillctrl CLI and packages it into a versioned archive under dist/.
+Builds skillctrl and skillctrl-desktop and packages them into a versioned archive under dist/.
 
 Options:
   --target <triple>     Rust target triple to build for. Defaults to the host target.
@@ -47,6 +47,7 @@ workspace_version() {
 }
 
 require_cmd cargo
+require_cmd npm
 require_cmd tar
 require_cmd rustc
 
@@ -96,13 +97,38 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-BIN_NAME="skillctrl"
+DESKTOP_DIR="$ROOT_DIR/skillctrl-desktop"
+if [ ! -d "$DESKTOP_DIR" ]; then
+    echo "error: desktop app directory not found: $DESKTOP_DIR" >&2
+    exit 1
+fi
+
+echo "Preparing skillctrl-desktop frontend..."
+if [ ! -d "$DESKTOP_DIR/node_modules" ]; then
+    NPM_INSTALL_ARGS=(ci --no-fund --no-audit)
+    if [ "$OFFLINE" -eq 1 ]; then
+        NPM_INSTALL_ARGS+=(--offline)
+    fi
+    (
+        cd "$DESKTOP_DIR"
+        npm "${NPM_INSTALL_ARGS[@]}"
+    )
+fi
+(
+    cd "$DESKTOP_DIR"
+    npm run build
+)
+
+BIN_NAMES=("skillctrl" "skillctrl-desktop")
 BIN_EXT=""
 if [[ "$TARGET_TRIPLE" == *windows* ]]; then
     BIN_EXT=".exe"
 fi
 
-BUILD_ARGS=(build --locked --package "$BIN_NAME" --target "$TARGET_TRIPLE")
+BUILD_ARGS=(build --locked --target "$TARGET_TRIPLE")
+for bin_name in "${BIN_NAMES[@]}"; do
+    BUILD_ARGS+=(--package "$bin_name")
+done
 if [ "$PROFILE" = "release" ]; then
     BUILD_ARGS+=(--release)
 else
@@ -112,19 +138,23 @@ if [ "$OFFLINE" -eq 1 ]; then
     BUILD_ARGS+=(--offline)
 fi
 
-echo "Building ${BIN_NAME} ${VERSION} for ${TARGET_TRIPLE} (${PROFILE})..."
+echo "Building ${BIN_NAMES[*]} ${VERSION} for ${TARGET_TRIPLE} (${PROFILE})..."
 cargo "${BUILD_ARGS[@]}"
 
-BINARY_PATH="$ROOT_DIR/target/$TARGET_TRIPLE/$PROFILE/$BIN_NAME$BIN_EXT"
-if [ ! -f "$BINARY_PATH" ]; then
-    echo "error: expected binary not found: $BINARY_PATH" >&2
-    exit 1
-fi
+BINARY_PATHS=()
+for bin_name in "${BIN_NAMES[@]}"; do
+    binary_path="$ROOT_DIR/target/$TARGET_TRIPLE/$PROFILE/$bin_name$BIN_EXT"
+    if [ ! -f "$binary_path" ]; then
+        echo "error: expected binary not found: $binary_path" >&2
+        exit 1
+    fi
+    BINARY_PATHS+=("$binary_path")
+done
 
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 
-PACKAGE_BASENAME="${BIN_NAME}-v${VERSION}-${TARGET_TRIPLE}"
+PACKAGE_BASENAME="skillctrl-v${VERSION}-${TARGET_TRIPLE}"
 ARCHIVE_PATH="$OUTPUT_DIR/${PACKAGE_BASENAME}.tar.gz"
 CHECKSUM_PATH="${ARCHIVE_PATH}.sha256"
 
@@ -134,21 +164,26 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 PACKAGE_DIR="$WORK_DIR/$PACKAGE_BASENAME"
 mkdir -p "$PACKAGE_DIR"
 
-cp "$BINARY_PATH" "$PACKAGE_DIR/$BIN_NAME$BIN_EXT"
+for index in "${!BIN_NAMES[@]}"; do
+    cp "${BINARY_PATHS[$index]}" "$PACKAGE_DIR/${BIN_NAMES[$index]}$BIN_EXT"
+done
 
 if [ -f "$ROOT_DIR/README.md" ]; then
     cp "$ROOT_DIR/README.md" "$PACKAGE_DIR/"
+fi
+if [ -f "$ROOT_DIR/USER_GUIDE.md" ]; then
+    cp "$ROOT_DIR/USER_GUIDE.md" "$PACKAGE_DIR/"
 fi
 if [ -f "$ROOT_DIR/LICENSE-Apache-2.0.txt" ]; then
     cp "$ROOT_DIR/LICENSE-Apache-2.0.txt" "$PACKAGE_DIR/"
 fi
 
 cat > "$PACKAGE_DIR/BUILD_INFO.txt" <<EOF
-name=${BIN_NAME}
+name=skillctrl
 version=${VERSION}
 target=${TARGET_TRIPLE}
 profile=${PROFILE}
-binary=${BIN_NAME}${BIN_EXT}
+binaries=$(IFS=,; printf '%s' "${BIN_NAMES[*]}")
 EOF
 
 tar -C "$WORK_DIR" -czf "$ARCHIVE_PATH" "$PACKAGE_BASENAME"
@@ -164,4 +199,6 @@ echo "  Archive: $ARCHIVE_PATH"
 if [ -f "$CHECKSUM_PATH" ]; then
     echo "  Checksum: $CHECKSUM_PATH"
 fi
-echo "  Binary: $BINARY_PATH"
+for binary_path in "${BINARY_PATHS[@]}"; do
+    echo "  Binary: $binary_path"
+done

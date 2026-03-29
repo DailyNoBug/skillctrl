@@ -19,6 +19,7 @@
 - 安装校验：检查是否安装、版本是否最新、内容是否一致
 - Import / Export：导入现有配置，导出到目标格式
 - Shell Completion：生成 tab 补全脚本
+- Cross-platform Desktop App：`skillctrl-desktop` 提供基于 Tauri + React + TypeScript 的 macOS / Windows / Linux 桌面端
 
 ## 安装
 
@@ -34,6 +35,20 @@ cargo install --locked --path crates/skillctrl-cli
 cargo build -p skillctrl
 ./target/debug/skillctrl --help
 ```
+
+### 构建桌面应用
+
+```bash
+cd skillctrl-desktop
+npm ci
+npm run build
+cd ..
+
+cargo build -p skillctrl -p skillctrl-desktop
+./target/debug/skillctrl-desktop
+```
+
+桌面应用会调用真实的 `skillctrl --json-resp` 来执行所有操作。新的桌面端使用 Web 前端 + 原生 Tauri shell，因此需要先构建前端资源，再构建 Rust 二进制。
 
 ### 更新本地安装版本
 
@@ -96,6 +111,9 @@ skillctrl completion --help
 ## 文档
 
 - 用户使用手册：[USER_GUIDE.md](./USER_GUIDE.md)
+- 桌面应用源码目录：[`skillctrl-desktop/`](./skillctrl-desktop)
+
+Release 产物会同时包含 `skillctrl` 和 `skillctrl-desktop` 两个二进制，方便命令行和桌面端一起分发。
 
 `USER_GUIDE.md` 包含：
 
@@ -104,6 +122,8 @@ skillctrl completion --help
 - `project` / `user` 作用域的使用建议
 - `--json-resp` 的脚本化调用方式
 - `completion`、`verify`、`import`、`export` 的完整示例
+- `skillctrl-desktop` 的构建、启动和使用说明
+- Tauri + React 桌面端的开发和打包方式
 
 ## 开发说明
 
@@ -111,6 +131,7 @@ skillctrl completion --help
 
 ```bash
 cargo fmt
+cd skillctrl-desktop && npm ci && npm run build && cd ..
 cargo test -p skillctrl
-cargo build -p skillctrl
+cargo build -p skillctrl -p skillctrl-desktop
 ```

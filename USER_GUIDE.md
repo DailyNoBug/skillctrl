@@ -43,6 +43,26 @@ cargo build -p skillctrl
 ./target/debug/skillctrl --help
 ```
 
+### 构建并启动桌面应用
+
+```bash
+cd skillctrl-desktop
+npm ci
+npm run build
+cd ..
+
+cargo build -p skillctrl -p skillctrl-desktop
+./target/debug/skillctrl-desktop
+```
+
+`skillctrl-desktop` 是跨平台桌面端，支持 macOS、Windows、Linux。当前桌面端基于 `Tauri + React + TypeScript + Vite`，通过调用 `skillctrl --json-resp` 来复用 CLI 的完整功能，因此开发环境下需要先构建前端，再构建两个二进制。
+
+如果桌面端启动时提示找不到 `skillctrl`，按这个顺序检查：
+
+- 确认 `skillctrl` 和 `skillctrl-desktop` 位于同一个目录
+- 或者把 `skillctrl` 加到 `PATH`
+- 或者设置 `SKILLCTRL_BINARY=/absolute/path/to/skillctrl`
+
 ## 3. 基本概念
 
 ### 3.1 Source
@@ -87,6 +107,30 @@ cargo build -p skillctrl
 - `project`：安装到某个项目目录下
 
 当 `scope=project` 时，通常需要额外传 `--project <项目路径>`。
+
+### 3.5 Desktop App
+
+`skillctrl-desktop` 是 `skillctrl` 的桌面图形界面。它覆盖当前 CLI 的主要能力，包括：
+
+- Source 管理
+- 资产列表与详情查看
+- 安装、卸载、状态查询、内容校验
+- Source 更新
+- Import / Export
+- Completion 脚本生成
+- 原始 JSON、stdout、stderr 查看
+
+桌面端更适合这些场景：
+
+- 希望以表单方式填写参数，而不是手工拼接命令
+- 需要更直观地查看资产类型、版本、安装状态和校验结果
+- 想在一个界面里同时保留结构化结果和命令输出
+
+当前桌面端技术栈：
+
+- Tauri 原生壳
+- React + TypeScript 页面层
+- Vite 前端构建
 
 ## 4. 快速开始
 
@@ -174,6 +218,28 @@ skillctrl verify review-pr \
 - 这个资产有没有安装
 - 本地安装版本是不是最新
 - 本地文件内容是否与 source 中当前内容一致
+
+### 4.7 启动桌面应用
+
+开发环境下：
+
+```bash
+cd skillctrl-desktop
+npm ci
+npm run build
+cd ..
+
+cargo build -p skillctrl -p skillctrl-desktop
+./target/debug/skillctrl-desktop
+```
+
+如果你是从 release 包启动，通常只需要保证两个二进制放在同一个目录下：
+
+```bash
+./skillctrl-desktop
+```
+
+桌面端会自动优先寻找同目录下的 `skillctrl`，找不到时再查找 `PATH` 或 `SKILLCTRL_BINARY`。
 
 ## 5. 全局参数
 
@@ -776,6 +842,20 @@ HTTPS：
 skillctrl source update hub --access-token <token>
 ```
 
+### 场景 5：使用桌面端管理 source 和资产
+
+```bash
+./skillctrl-desktop
+```
+
+推荐流程：
+
+- 在 `Sources` 页面添加或更新 source
+- 在 `Assets` 页面按 source、target、关键字筛选资产
+- 在 `Install` 页面执行安装
+- 在 `Status` 和 `Verify` 页面确认安装结果
+- 在 `Console` 页面查看原始 JSON、stdout、stderr
+
 ## 9. 常见问题
 
 ### 9.1 `source add` 时 GitHub 超时
@@ -788,7 +868,35 @@ skillctrl source update hub --access-token <token>
 
 如果你本机系统 `git` 可以访问 GitHub，而 `skillctrl` 不行，先重新安装最新版本再重试。
 
-### 9.2 `project` 作用域下必须传 `--project` 吗
+### 9.2 `skillctrl-desktop` 启动时报找不到 `skillctrl`
+
+桌面端需要调用 CLI 二进制。推荐把以下两个文件一起发布：
+
+- `skillctrl`
+- `skillctrl-desktop`
+
+如果不能放在一起，可以设置：
+
+```bash
+export SKILLCTRL_BINARY=/absolute/path/to/skillctrl
+```
+
+然后再启动桌面端。
+
+### 9.3 release 包里包含哪些文件
+
+当前 release 归档会同时打包：
+
+- `skillctrl`
+- `skillctrl-desktop`
+- `README.md`
+- `USER_GUIDE.md`
+- `LICENSE-Apache-2.0.txt`
+- `BUILD_INFO.txt`
+
+这样命令行和桌面端都可以直接从同一份发布物中使用。
+
+### 9.4 `project` 作用域下必须传 `--project` 吗
 
 是。凡是命令里需要明确项目目录时，`scope=project` 都应传：
 
@@ -796,7 +904,7 @@ skillctrl source update hub --access-token <token>
 --project /path/to/repo
 ```
 
-### 9.3 `--json-resp` 放在前面还是后面
+### 9.5 `--json-resp` 放在前面还是后面
 
 两种都可以，下面两种写法都推荐：
 

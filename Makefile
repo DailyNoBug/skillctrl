@@ -7,24 +7,32 @@ all: build
 
 # Build the project
 build:
-	@echo "Building skillctrl..."
+	@echo "Building skillctrl-desktop frontend and native binaries..."
 	@test -x "$(CARGO)" || (echo "cargo not found. Install Rust: https://rustup.rs and run 'source $$HOME/.cargo/env'" && exit 1)
+	@if [ ! -d "skillctrl-desktop/node_modules" ]; then cd skillctrl-desktop && npm ci --no-fund --no-audit; fi
+	cd skillctrl-desktop && npm run build
 	$(CARGO) build --locked --release
 
 # Build in debug mode
 debug:
-	@echo "Building skillctrl (debug)..."
+	@echo "Building skillctrl-desktop frontend and debug binaries..."
 	@test -x "$(CARGO)" || (echo "cargo not found. Install Rust: https://rustup.rs and run 'source $$HOME/.cargo/env'" && exit 1)
+	@if [ ! -d "skillctrl-desktop/node_modules" ]; then cd skillctrl-desktop && npm ci --no-fund --no-audit; fi
+	cd skillctrl-desktop && npm run build
 	$(CARGO) build --locked
 
 # Run tests
 test:
 	@echo "Running tests..."
+	@if [ ! -d "skillctrl-desktop/node_modules" ]; then cd skillctrl-desktop && npm ci --no-fund --no-audit; fi
+	cd skillctrl-desktop && npm run build
 	$(CARGO) test --workspace --locked
 
 # Run tests with output
 test-verbose:
 	@echo "Running tests (verbose)..."
+	@if [ ! -d "skillctrl-desktop/node_modules" ]; then cd skillctrl-desktop && npm ci --no-fund --no-audit; fi
+	cd skillctrl-desktop && npm run build
 	$(CARGO) test --workspace --locked -- --nocapture
 
 # Format code
@@ -49,7 +57,7 @@ install: build
 
 # Package a distributable binary archive
 package:
-	@echo "Packaging skillctrl..."
+	@echo "Packaging skillctrl and skillctrl-desktop..."
 	bash ./package.sh
 
 # Run the CLI
@@ -64,6 +72,8 @@ update:
 # Check for issues (without building)
 check:
 	@echo "Checking..."
+	@if [ ! -d "skillctrl-desktop/node_modules" ]; then cd skillctrl-desktop && npm ci --no-fund --no-audit; fi
+	cd skillctrl-desktop && npm run build
 	$(CARGO) check --workspace --locked
 
 # Run all checks

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "skillctrl-desktop",
     "crates/skillctrl-core",
     "crates/skillctrl-catalog",
     "crates/skillctrl-git",
