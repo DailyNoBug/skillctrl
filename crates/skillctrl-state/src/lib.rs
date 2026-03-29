@@ -346,36 +346,53 @@ impl StateManager {
         bundle_id: Option<&str>,
         endpoint: Option<&Endpoint>,
         scope: Option<Scope>,
+        project_path: Option<&Path>,
     ) -> Result<Vec<InstallationRecord>> {
         let conn = self.conn.clone();
         let bundle_id = bundle_id.map(|s| s.to_string());
         let endpoint = endpoint.map(|e| e.to_string());
         let scope = scope;
+        let project_path = project_path.map(|p| p.to_string_lossy().to_string());
 
         tokio::task::spawn_blocking(move || {
             let conn = conn
                 .lock()
                 .map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
 
-            let (filter_clause, params): (String, Vec<Option<String>>) =
-                match (&bundle_id, &endpoint, scope) {
-                    (Some(b), Some(e), Some(s)) => (
-                        "WHERE bundle_id = ? AND endpoint = ? AND scope = ?".to_string(),
-                        vec![Some(b.clone()), Some(e.clone()), Some(scope_to_string(s))],
-                    ),
-                    (Some(b), Some(e), None) => (
-                        "WHERE bundle_id = ? AND endpoint = ?".to_string(),
-                        vec![Some(b.clone()), Some(e.clone())],
-                    ),
-                    (Some(b), None, None) => {
-                        ("WHERE bundle_id = ?".to_string(), vec![Some(b.clone())])
-                    }
-                    (None, Some(e), None) => {
-                        ("WHERE endpoint = ?".to_string(), vec![Some(e.clone())])
-                    }
-                    (None, None, None) => ("".to_string(), vec![]),
-                    _ => ("".to_string(), vec![]),
-                };
+            let mut clauses = Vec::new();
+            let mut params = Vec::new();
+
+            if let Some(bundle_id) = &bundle_id {
+                clauses.push("bundle_id = ?");
+                params.push(Some(bundle_id.clone()));
+            }
+
+            if let Some(endpoint) = &endpoint {
+                clauses.push("endpoint = ?");
+                params.push(Some(endpoint.clone()));
+            }
+
+            if let Some(scope) = scope {
+                clauses.push("scope = ?");
+                params.push(Some(scope_to_string(scope)));
+            }
+
+            match &project_path {
+                Some(project_path) => {
+                    clauses.push("project_path = ?");
+                    params.push(Some(project_path.clone()));
+                }
+                None if scope == Some(Scope::User) => {
+                    clauses.push("project_path IS NULL");
+                }
+                None => {}
+            }
+
+            let filter_clause = if clauses.is_empty() {
+                "".to_string()
+            } else {
+                format!("WHERE {}", clauses.join(" AND "))
+            };
 
             let sql = format!(
                 "SELECT bundle_id, bundle_version, source_name, endpoint, scope,
