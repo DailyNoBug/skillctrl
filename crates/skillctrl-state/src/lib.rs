@@ -63,12 +63,17 @@ impl StateManager {
                 repo_url TEXT NOT NULL,
                 branch TEXT NOT NULL,
                 cache_path TEXT NOT NULL,
+                ssh_key_path TEXT,
+                access_token TEXT,
                 last_commit TEXT,
                 updated_at TEXT
             )",
             [],
         )
         .map_err(|e| Error::Database(format!("failed to create sources table: {}", e)))?;
+
+        Self::ensure_column(conn, "sources", "ssh_key_path", "TEXT")?;
+        Self::ensure_column(conn, "sources", "access_token", "TEXT")?;
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS installations (
@@ -103,6 +108,33 @@ impl StateManager {
         Ok(())
     }
 
+    fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str) -> Result<()> {
+        let pragma = format!("PRAGMA table_info({})", table);
+        let mut stmt = conn
+            .prepare(&pragma)
+            .map_err(|e| Error::Database(format!("failed to inspect {} schema: {}", table, e)))?;
+
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| Error::Database(format!("failed to inspect {} columns: {}", table, e)))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| Error::Database(format!("failed to collect {} columns: {}", table, e)))?;
+
+        if columns.iter().any(|existing| existing == column) {
+            return Ok(());
+        }
+
+        conn.execute(
+            &format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, definition),
+            [],
+        )
+        .map_err(|e| {
+            Error::Database(format!("failed to add column {}.{}: {}", table, column, e))
+        })?;
+
+        Ok(())
+    }
+
     /// Registers a source.
     pub async fn register_source(&self, source: &GitSource) -> Result<()> {
         let conn = self
@@ -117,15 +149,59 @@ impl StateManager {
             .join(&source.name)
             .to_string_lossy()
             .to_string();
+        let ssh_key_path = source
+            .ssh_key_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string());
+        let access_token = source.access_token.clone();
 
         conn.execute(
-            "INSERT OR REPLACE INTO sources (name, repo_url, branch, cache_path)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![name, repo_url, branch, cache_path],
+            "INSERT INTO sources (name, repo_url, branch, cache_path, ssh_key_path, access_token)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(name) DO UPDATE SET
+                repo_url = excluded.repo_url,
+                branch = excluded.branch,
+                cache_path = excluded.cache_path,
+                ssh_key_path = excluded.ssh_key_path,
+                access_token = excluded.access_token",
+            params![
+                name,
+                repo_url,
+                branch,
+                cache_path,
+                ssh_key_path,
+                access_token
+            ],
         )
         .map_err(|e| Error::Database(format!("failed to register source: {}", e)))?;
 
         Ok(())
+    }
+
+    /// Gets a single registered source by name.
+    pub async fn get_source(&self, name: &str) -> Result<Option<SourceEntry>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT name, repo_url, branch, cache_path, ssh_key_path, access_token, last_commit, updated_at
+                 FROM sources
+                 WHERE name = ?1",
+            )
+            .map_err(|e| Error::Database(format!("failed to prepare source query: {}", e)))?;
+
+        let mut rows = stmt
+            .query(params![name])
+            .map_err(|e| Error::Database(format!("failed to query source: {}", e)))?;
+
+        rows.next()
+            .map_err(|e| Error::Database(format!("failed to read source row: {}", e)))?
+            .map(map_source_entry)
+            .transpose()
+            .map_err(|e| Error::Database(format!("failed to decode source row: {}", e)))
     }
 
     /// Lists all registered sources.
@@ -137,26 +213,61 @@ impl StateManager {
 
         let mut stmt = conn
             .prepare(
-                "SELECT name, repo_url, branch, cache_path, last_commit, updated_at FROM sources",
+                "SELECT name, repo_url, branch, cache_path, ssh_key_path, access_token, last_commit, updated_at
+                 FROM sources
+                 ORDER BY name ASC",
             )
             .map_err(|e| Error::Database(format!("failed to list sources: {}", e)))?;
 
         let entries = stmt
-            .query_map([], |row| {
-                Ok(SourceEntry {
-                    name: row.get(0)?,
-                    repo_url: row.get(1)?,
-                    branch: row.get(2)?,
-                    cache_path: PathBuf::from(row.get::<_, String>(3)?),
-                    last_commit: row.get(4)?,
-                    updated_at: row.get(5)?,
-                })
-            })
+            .query_map([], map_source_entry)
             .map_err(|e| Error::Database(format!("failed to map sources: {}", e)))?
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| Error::Database(format!("failed to collect sources: {}", e)))?;
 
         Ok(entries)
+    }
+
+    /// Removes a registered source.
+    pub async fn remove_source(&self, name: &str) -> Result<bool> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
+
+        let removed = conn
+            .execute("DELETE FROM sources WHERE name = ?1", params![name])
+            .map_err(|e| Error::Database(format!("failed to remove source: {}", e)))?;
+
+        Ok(removed > 0)
+    }
+
+    /// Updates sync metadata for a registered source.
+    pub async fn update_source_sync_status(
+        &self,
+        name: &str,
+        last_commit: Option<&str>,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Database(format!("failed to lock database: {}", e)))?;
+
+        let updated_at = chrono::Utc::now().to_rfc3339();
+        let affected = conn
+            .execute(
+                "UPDATE sources
+                 SET last_commit = ?2, updated_at = ?3
+                 WHERE name = ?1",
+                params![name, last_commit, updated_at],
+            )
+            .map_err(|e| Error::Database(format!("failed to update source status: {}", e)))?;
+
+        if affected == 0 {
+            return Err(Error::NotFound(format!("source '{}' not found", name)));
+        }
+
+        Ok(())
     }
 
     /// Records an installation.
@@ -354,6 +465,12 @@ pub struct SourceEntry {
     /// Cache directory path.
     pub cache_path: PathBuf,
 
+    /// SSH private key path (if configured).
+    pub ssh_key_path: Option<PathBuf>,
+
+    /// HTTPS access token (if configured).
+    pub access_token: Option<String>,
+
     /// Last commit hash (if fetched).
     pub last_commit: Option<String>,
 
@@ -411,6 +528,19 @@ fn scope_from_string(s: &str) -> Scope {
     }
 }
 
+fn map_source_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<SourceEntry> {
+    Ok(SourceEntry {
+        name: row.get(0)?,
+        repo_url: row.get(1)?,
+        branch: row.get(2)?,
+        cache_path: PathBuf::from(row.get::<_, String>(3)?),
+        ssh_key_path: row.get::<_, Option<String>>(4)?.map(PathBuf::from),
+        access_token: row.get(5)?,
+        last_commit: row.get(6)?,
+        updated_at: row.get(7)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -429,6 +559,9 @@ mod tests {
             repo_url: "https://github.com/test/repo.git".to_string(),
             branch: "main".to_string(),
             cache_dir: temp_dir.path().to_path_buf(),
+            ssh_key_path: None,
+            ssh_passphrase: None,
+            access_token: Some("token".to_string()),
         };
 
         state.register_source(&source).await.unwrap();
@@ -437,5 +570,24 @@ mod tests {
         let sources = state.list_sources().await.unwrap();
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].name, "test");
+        assert_eq!(sources[0].access_token.as_deref(), Some("token"));
+
+        // Get source
+        let fetched = state.get_source("test").await.unwrap().unwrap();
+        assert_eq!(fetched.repo_url, source.repo_url);
+
+        // Update sync metadata
+        state
+            .update_source_sync_status("test", Some("abc123"))
+            .await
+            .unwrap();
+        let fetched = state.get_source("test").await.unwrap().unwrap();
+        assert_eq!(fetched.last_commit.as_deref(), Some("abc123"));
+        assert!(fetched.updated_at.is_some());
+
+        // Remove source
+        let removed = state.remove_source("test").await.unwrap();
+        assert!(removed);
+        assert!(state.get_source("test").await.unwrap().is_none());
     }
 }

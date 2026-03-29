@@ -52,7 +52,15 @@ Coming soon.
 ```bash
 skillctrl source add team \
   --repo git@github.com:yourorg/ai-market.git \
-  --branch main
+  --branch main \
+  --ssh-key ~/.ssh/id_ed25519
+```
+
+```bash
+skillctrl source add team \
+  --repo https://github.com/yourorg/ai-market.git \
+  --branch main \
+  --access-token <token>
 ```
 
 ### 2. List Available Bundles
@@ -88,11 +96,21 @@ skillctrl status \
 # Add a new source
 skillctrl source add <name> --repo <url> --branch <branch>
 
+# Add an SSH source with an explicit SSH key
+skillctrl source add <name> --repo git@host:org/repo.git --ssh-key ~/.ssh/id_ed25519
+
+# Add an HTTPS source with an access token
+skillctrl source add <name> --repo https://host/org/repo.git --access-token <token>
+
 # List all sources
 skillctrl source list
 
 # Update a source
 skillctrl source update <name>
+
+# Rotate auth for an existing source
+skillctrl source update <name> --ssh-key ~/.ssh/new_id_ed25519
+skillctrl source update <name> --access-token <new-token>
 
 # Remove a source
 skillctrl source remove <name>
@@ -153,6 +171,24 @@ skillctrl status --target claude-code --scope user
 
 # Show specific bundle
 skillctrl status --target claude-code --scope project --project /path --bundle <id>
+```
+
+### Shell Completion
+
+```bash
+# zsh
+mkdir -p ~/.zsh/completions
+skillctrl completion zsh > ~/.zsh/completions/_skillctrl
+```
+
+Then add `fpath=(~/.zsh/completions $fpath)` to your `~/.zshrc` and run `autoload -Uz compinit && compinit`.
+
+```bash
+# bash
+skillctrl completion bash > ~/.local/share/bash-completion/completions/skillctrl
+
+# fish
+skillctrl completion fish > ~/.config/fish/completions/skillctrl.fish
 ```
 
 ## Bundle Structure

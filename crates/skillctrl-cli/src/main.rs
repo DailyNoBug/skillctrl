@@ -1,11 +1,13 @@
 //! skillctrl - Unified skills marketplace for Claude Code, Codex, and Cursor.
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use indicatif::{ProgressBar, ProgressStyle};
 use skillctrl_catalog::{SourceBundle, SourceCatalog};
 use skillctrl_core::{Endpoint, KnownEndpoint, Scope};
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -57,7 +59,7 @@ enum Commands {
         bundle_id: String,
 
         /// Source name
-        #[arg(short, long)]
+        #[arg(short = 'S', long)]
         source: Option<String>,
     },
 
@@ -67,7 +69,7 @@ enum Commands {
         bundle_id: String,
 
         /// Source name
-        #[arg(short, long)]
+        #[arg(short = 'S', long)]
         source: String,
 
         /// Target endpoint
@@ -146,7 +148,7 @@ enum Commands {
         bundle_id: String,
 
         /// Source name
-        #[arg(short, long)]
+        #[arg(short = 'S', long)]
         source: String,
 
         /// Target endpoint/format
@@ -160,6 +162,12 @@ enum Commands {
         /// Export format
         #[arg(short, long)]
         format: String,
+    },
+
+    /// Generate shell completion scripts
+    Completion {
+        /// Shell to generate completion for
+        shell: Shell,
     },
 }
 
@@ -178,6 +186,14 @@ enum SourceCommands {
         /// Branch name
         #[arg(short, long, default_value = "main")]
         branch: String,
+
+        /// SSH private key to use for SSH repositories
+        #[arg(long, value_name = "PATH", conflicts_with = "access_token")]
+        ssh_key: Option<PathBuf>,
+
+        /// Access token to use for HTTPS repositories
+        #[arg(long, value_name = "TOKEN", conflicts_with = "ssh_key")]
+        access_token: Option<String>,
     },
 
     /// List all sources
@@ -193,6 +209,14 @@ enum SourceCommands {
     Update {
         /// Source name
         name: String,
+
+        /// SSH private key to use for SSH repositories
+        #[arg(long, value_name = "PATH", conflicts_with = "access_token")]
+        ssh_key: Option<PathBuf>,
+
+        /// Access token to use for HTTPS repositories
+        #[arg(long, value_name = "TOKEN", conflicts_with = "ssh_key")]
+        access_token: Option<String>,
     },
 }
 
@@ -307,19 +331,37 @@ async fn run_command(cli: Cli) -> Result<()> {
             out,
             format,
         } => handle_export(bundle_id, source, target, out, format).await,
+        Commands::Completion { shell } => handle_completion(shell),
     }
 }
 
 async fn handle_source_command(action: SourceCommands) -> Result<()> {
     match action {
-        SourceCommands::Add { name, repo, branch } => source_add(name, repo, branch).await,
+        SourceCommands::Add {
+            name,
+            repo,
+            branch,
+            ssh_key,
+            access_token,
+        } => source_add(name, repo, branch, ssh_key, access_token).await,
         SourceCommands::List => source_list().await,
         SourceCommands::Remove { name } => source_remove(name).await,
-        SourceCommands::Update { name } => source_update(name).await,
+        SourceCommands::Update {
+            name,
+            ssh_key,
+            access_token,
+        } => source_update(name, ssh_key, access_token).await,
     }
 }
 
-async fn source_add(name: String, repo: String, branch: String) -> Result<()> {
+async fn source_add(
+    name: String,
+    repo: String,
+    branch: String,
+    ssh_key: Option<PathBuf>,
+    access_token: Option<String>,
+) -> Result<()> {
+    validate_source_auth_args(&repo, ssh_key.as_ref(), access_token.as_deref())?;
     println!("Adding source '{}' from {}", name, repo);
 
     // Get cache directory
@@ -328,12 +370,14 @@ async fn source_add(name: String, repo: String, branch: String) -> Result<()> {
         .join("skillctrl");
     std::fs::create_dir_all(&cache_dir)?;
 
-    // Register source in state
-    let state = skillctrl_state::StateManager::open_default().await?;
-    let cache_path = cache_dir.clone();
-    let source =
-        skillctrl_state::GitSource::new(name.clone(), repo.clone(), branch.clone(), cache_path);
-    state.register_source(&source).await?;
+    let source = build_git_source(
+        name.clone(),
+        repo.clone(),
+        branch.clone(),
+        cache_dir.clone(),
+        ssh_key,
+        access_token,
+    );
 
     // Clone the repository
     let spinner = create_spinner("Cloning repository...".to_string());
@@ -341,10 +385,17 @@ async fn source_add(name: String, repo: String, branch: String) -> Result<()> {
     let path = git_manager.clone(&source).await?;
     let catalog = SourceCatalog::load_from_dir(&path)
         .with_context(|| format!("failed to load source catalog from {}", path.display()))?;
+    let current_commit = git_manager.current_commit(&source).await.ok();
     spinner.finish_with_message(format!(
         "Repository cloned successfully ({} bundles)",
         catalog.bundles().len()
     ));
+
+    let state = skillctrl_state::StateManager::open_default().await?;
+    state.register_source(&source).await?;
+    state
+        .update_source_sync_status(&name, current_commit.as_deref())
+        .await?;
 
     println!("✓ Source '{}' added successfully", name);
     Ok(())
@@ -367,6 +418,7 @@ async fn source_list() -> Result<()> {
         println!("  {}", source.name);
         println!("    URL: {}", source.repo_url);
         println!("    Branch: {}", source.branch);
+        println!("    Auth: {}", format_source_auth(source));
         if let Some(commit) = &source.last_commit {
             println!("    Last commit: {}", commit);
         }
@@ -378,45 +430,77 @@ async fn source_list() -> Result<()> {
 
 async fn source_remove(name: String) -> Result<()> {
     println!("Removing source '{}'...", name);
-    // TODO: Implement removal from state
+
+    let state = skillctrl_state::StateManager::open_default().await?;
+    let source = state
+        .get_source(&name)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("source '{}' not found", name))?;
+
+    state.remove_source(&name).await?;
+
+    if source.cache_path.exists() {
+        if let Err(err) = fs::remove_dir_all(&source.cache_path) {
+            eprintln!(
+                "warning: source '{}' was removed from state, but failed to delete cache {}: {}",
+                name,
+                source.cache_path.display(),
+                err
+            );
+        }
+    }
+
     println!("✓ Source '{}' removed", name);
     Ok(())
 }
 
-async fn source_update(name: String) -> Result<()> {
+async fn source_update(
+    name: String,
+    ssh_key: Option<PathBuf>,
+    access_token: Option<String>,
+) -> Result<()> {
     println!("Updating source '{}'...", name);
 
     let state = skillctrl_state::StateManager::open_default().await?;
-    let sources = state.list_sources().await?;
-
-    let source = sources
-        .iter()
-        .find(|s| s.name == name)
+    let source_entry = state
+        .get_source(&name)
+        .await?
         .ok_or_else(|| anyhow::anyhow!("source '{}' not found", name))?;
 
-    let cache_dir = source
+    let cache_dir = source_entry
         .cache_path
         .parent()
-        .ok_or_else(|| anyhow::anyhow!("invalid cache path for source '{}'", source.name))?
+        .ok_or_else(|| anyhow::anyhow!("invalid cache path for source '{}'", source_entry.name))?
         .to_path_buf();
+    let source = build_git_source(
+        source_entry.name.clone(),
+        source_entry.repo_url.clone(),
+        source_entry.branch.clone(),
+        cache_dir.clone(),
+        ssh_key.or(source_entry.ssh_key_path.clone()),
+        access_token.or(source_entry.access_token.clone()),
+    );
+    validate_source_auth_args(
+        &source.repo_url,
+        source.ssh_key_path.as_ref(),
+        source.access_token.as_deref(),
+    )?;
 
     let spinner = create_spinner("Fetching updates...".to_string());
     let git_manager = skillctrl_git::GitManager::new(cache_dir.clone());
-    let path = git_manager
-        .fetch(&skillctrl_git::GitSource::new(
-            source.name.clone(),
-            source.repo_url.clone(),
-            source.branch.clone(),
-            cache_dir,
-        ))
-        .await?;
+    let path = git_manager.fetch(&source).await?;
     let catalog = SourceCatalog::load_from_dir(&path)
         .with_context(|| format!("failed to load source catalog from {}", path.display()))?;
+    let current_commit = git_manager.current_commit(&source).await.ok();
     spinner.finish_with_message(format!(
         "Updates fetched ({} bundles available)",
         catalog.bundles().len()
     ));
 
+    state.register_source(&source).await?;
+    state
+        .update_source_sync_status(&name, current_commit.as_deref())
+        .await?;
     println!("✓ Source '{}' updated successfully", name);
     Ok(())
 }
@@ -792,7 +876,7 @@ async fn handle_status(
 
 async fn handle_update(source: Option<String>) -> Result<()> {
     if let Some(name) = source {
-        source_update(name).await
+        source_update(name, None, None).await
     } else {
         // Update all sources
         let state = skillctrl_state::StateManager::open_default().await?;
@@ -804,7 +888,7 @@ async fn handle_update(source: Option<String>) -> Result<()> {
         }
 
         for source in &sources {
-            source_update(source.name.clone()).await?;
+            source_update(source.name.clone(), None, None).await?;
         }
 
         Ok(())
@@ -868,6 +952,12 @@ async fn handle_export(
 
     println!("✓ Bundle exported successfully to {}", out.display());
 
+    Ok(())
+}
+
+fn handle_completion(shell: Shell) -> Result<()> {
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "skillctrl", &mut io::stdout());
     Ok(())
 }
 
@@ -978,6 +1068,110 @@ fn parse_scope(s: &str) -> Result<Scope> {
         _ => return Err(anyhow::anyhow!("invalid scope: {}", s)),
     };
     Ok(scope)
+}
+
+fn build_git_source(
+    name: String,
+    repo: String,
+    branch: String,
+    cache_dir: PathBuf,
+    ssh_key: Option<PathBuf>,
+    access_token: Option<String>,
+) -> skillctrl_git::GitSource {
+    let source = skillctrl_git::GitSource::new(name, repo, branch, cache_dir);
+
+    match (ssh_key, access_token) {
+        (Some(key_path), None) => source.with_ssh_auth(key_path, None),
+        (None, Some(token)) => source.with_https_auth(token),
+        (None, None) => source,
+        (Some(_), Some(_)) => unreachable!("clap prevents conflicting auth arguments"),
+    }
+}
+
+fn format_source_auth(source: &skillctrl_state::SourceEntry) -> String {
+    match repo_transport(&source.repo_url) {
+        RepoTransport::Local => "local".to_string(),
+        RepoTransport::Ssh => match &source.ssh_key_path {
+            Some(path) => format!("ssh (key: {})", path.display()),
+            None => "ssh (agent/default)".to_string(),
+        },
+        RepoTransport::Https => {
+            if source.access_token.is_some() {
+                "https (token configured)".to_string()
+            } else {
+                "https (anonymous/default)".to_string()
+            }
+        }
+    }
+}
+
+fn validate_source_auth_args(
+    repo: &str,
+    ssh_key: Option<&PathBuf>,
+    access_token: Option<&str>,
+) -> Result<()> {
+    if let Some(token) = access_token {
+        if token.trim().is_empty() {
+            return Err(anyhow::anyhow!("--access-token cannot be empty"));
+        }
+    }
+
+    match repo_transport(repo) {
+        RepoTransport::Local => {
+            if ssh_key.is_some() || access_token.is_some() {
+                return Err(anyhow::anyhow!(
+                    "local repositories do not accept --ssh-key or --access-token"
+                ));
+            }
+        }
+        RepoTransport::Ssh => {
+            if access_token.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--access-token can only be used with HTTPS repository URLs"
+                ));
+            }
+        }
+        RepoTransport::Https => {
+            if ssh_key.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--ssh-key can only be used with SSH repository URLs"
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RepoTransport {
+    Local,
+    Ssh,
+    Https,
+}
+
+fn repo_transport(repo: &str) -> RepoTransport {
+    if repo.starts_with("http://") || repo.starts_with("https://") {
+        return RepoTransport::Https;
+    }
+
+    if repo.starts_with("ssh://")
+        || (repo.contains('@') && repo.contains(':') && !repo.contains("://"))
+    {
+        return RepoTransport::Ssh;
+    }
+
+    RepoTransport::Local
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_definition_is_valid() {
+        Cli::command().debug_assert();
+    }
 }
 
 fn get_adapter(

@@ -42,3 +42,6 @@ Thumbs.db
 # Cache
 .cache/
 *.cache
+
+# Docs (generated)
+/docs/

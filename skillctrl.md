@@ -216,10 +216,18 @@ skillctrl/
 ```bash
 skillctrl source add team \
   --repo git@github.com:yourorg/ai-market.git \
-  --branch main
+  --branch main \
+  --ssh-key ~/.ssh/id_ed25519
+
+skillctrl source add team \
+  --repo https://github.com/yourorg/ai-market.git \
+  --branch main \
+  --access-token <token>
 
 skillctrl source list
 skillctrl source update team
+skillctrl source update team --ssh-key ~/.ssh/id_ed25519
+skillctrl source update team --access-token <token>
 ```
 
 ### 6.2 catalog 浏览
@@ -257,6 +265,14 @@ skillctrl import apply --from cursor --path /repo --out ./market/bundles
 ```
 
 ### 6.6 导出 marketplace / native bundle
+
+### 6.7 shell 补全
+
+```bash
+skillctrl completion zsh > ~/.zsh/completions/_skillctrl
+skillctrl completion bash > ~/.local/share/bash-completion/completions/skillctrl
+skillctrl completion fish > ~/.config/fish/completions/skillctrl.fish
+```
 
 ```bash
 skillctrl export claude-marketplace --source ./market --out ./dist/claude-market

@@ -24,6 +24,7 @@ skillctrl-importer-core = { path = "../skillctrl-importer-core" }
 skillctrl-importer-claude = { path = "../skillctrl-importer-claude" }
 
 clap = { workspace = true }
+clap_complete = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 camino = { workspace = true }
